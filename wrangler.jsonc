@@ -1,0 +1,26 @@
+{
+  // Central de Decisões LORLER no Cloudflare (Worker + Durable Object com SQLite). Publicar: PUBLICAR-CEREBRO-NUVEM.bat
+  "name": "cerebro-lorler",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // mantém o endereço de teste *.workers.dev ligado mesmo depois da rota cerebro.lorler.com.br/*
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/healthz"]
+  },
+  "durable_objects": { "bindings": [{ "name": "CEREBRO", "class_name": "Cerebro" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Cerebro"] }],
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+  "vars": {
+    "LORLER_ENV": "production",
+    "LORLER_COOKIE_SECURE": "true",
+    "LORLER_TRUST_PROXY": "true",
+    "LORLER_DEMO_MODE": "true",
+    "LORLER_PUBLIC_URL": "https://cerebro.lorler.com.br"
+  },
+  "observability": { "enabled": true }
+}

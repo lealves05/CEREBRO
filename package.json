@@ -1,0 +1,16 @@
+{
+  "name": "lorler-central-de-decisoes",
+  "version": "0.3.0",
+  "description": "Central de Decisões LORLER — cérebro multiagente para decisões de gestão de ORBI, TORVEN, RUSTEN e APOLVEN",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "worker": "node --disable-warning=ExperimentalWarning src/worker.js",
+    "setup:owner": "node --disable-warning=ExperimentalWarning scripts/setup-owner.js",
+    "backup": "node --disable-warning=ExperimentalWarning scripts/backup.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"tests/*.test.js\""
+  }
+}

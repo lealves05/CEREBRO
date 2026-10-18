@@ -1,0 +1,4 @@
+@echo off
+title LORLER Cerebro - parar
+powershell -NoProfile -Command "Disable-ScheduledTask -TaskName 'LORLER Cerebro Vigia' -ErrorAction SilentlyContinue | Out-Null; Stop-ScheduledTask -TaskName 'LORLER Cerebro Tunnel' -ErrorAction SilentlyContinue; Stop-ScheduledTask -TaskName 'LORLER Cerebro' -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'src[\\/]server\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Get-CimInstance Win32_Process -Filter \"Name='cloudflared.exe'\" | Where-Object { $_.CommandLine -match 'lorler-cerebro' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Write-Host 'Central e tunel parados. (As tarefas continuam agendadas para o proximo logon; para remover: Unregister-ScheduledTask)'"
+pause

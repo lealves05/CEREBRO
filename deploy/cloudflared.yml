@@ -1,0 +1,12 @@
+tunnel: 127d2b19-2eb8-4fb9-8159-2525b2a4b77a
+credentials-file: C:\Users\Leandro\.cloudflared\127d2b19-2eb8-4fb9-8159-2525b2a4b77a.json
+logfile: D:\Programacao\Cerebro + Agentes\data\tunnel.log
+loglevel: info
+no-autoupdate: true
+protocol: http2
+retries: 10
+grace-period: 30s
+ingress:
+  - hostname: cerebro.lorler.com.br
+    service: http://127.0.0.1:3700
+  - service: http_status:404

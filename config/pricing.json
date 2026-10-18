@@ -1,0 +1,6 @@
+{
+  "_comentario": "Preços por milhão de tokens. Preencha conforme o contrato vigente com o provedor. Sem preço configurado, o custo fica em branco (não presumido).",
+  "pricing_version": "nao-configurado",
+  "currency": "USD",
+  "models": {}
+}

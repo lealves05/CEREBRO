@@ -1,0 +1,18 @@
+node_modules/
+data/
+backups/
+.env
+*.db
+*.db-wal
+*.db-shm
+.wrangler/
+.dev.vars
+tools/
+
+# dados de pessoas e cópias locais (não versionar)
+leads/
+redes/
+_sobras-zip/
+_backup-antes-voz/
+Identidade Visual/
+*.bak*
