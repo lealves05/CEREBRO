@@ -98,3 +98,6 @@ public/                        painel HUD (HTML/CSS/JS sem dependências)
 tests/                         cenários de aceitação
 docs/                          arquitetura, conectores, operação, relatório de verificação
 ```
+
+## Na VPS
+O cérebro roda na VPS LORLER (serviço `lorler-cerebro`). Mudança, atualização, backup e Master oculto: [docs/VPS.md](docs/VPS.md).

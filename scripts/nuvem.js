@@ -2,6 +2,9 @@
 // Uso:  node scripts/nuvem.js publicar            (fluxo completo — chamado pelo PUBLICAR-CEREBRO-NUVEM.bat)
 //       node scripts/nuvem.js exportar <arquivo>   (só gera o snapshot JSON do banco local)
 //       node scripts/nuvem.js importar <url> <token> [arquivo]
+//       node scripts/nuvem.js trazer [arquivo]          (mudança para a VPS: atualiza o Worker, congela a nuvem e baixa
+//                                                       todos os dados para data/nuvem-export.json)
+//       node scripts/nuvem.js descongelar             (desfaz o congelamento se a mudança for cancelada)
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -194,6 +197,7 @@ async function ask(q) {
 async function publicar() {
   const env = readEnvFile();
   const state = readState();
+  if (state.frozenAt) throw new Error(`O cérebro foi levado para a VPS em ${state.frozenAt}: publicar na nuvem de novo tiraria cerebro.lorler.com.br da VPS. Se a mudança foi cancelada, rode antes: node scripts\\nuvem.js descongelar`);
   const dbFile = dbPath(env);
 
   c.step('Ferramenta da Cloudflare');
@@ -274,6 +278,58 @@ async function publicar() {
   console.log(`  Webhook do WhatsApp (Meta): https://${HOSTNAME}/api/whatsapp/webhook (mesmo endereço de antes).`);
 }
 
+
+// ---------- mudança para a VPS ----------
+// 1) publica esta versão do Worker (traz a saída de dados), mantendo cerebro.lorler.com.br na nuvem enquanto ele ainda
+//    estiver lá; 2) baixa todas as tabelas e CONGELA a nuvem (gravações recusadas com 503, fila parada), para nada ser
+//    gravado na nuvem depois da cópia; 3) grava data/nuvem-export.json (só neste PC; vai para a VPS pelo VPS-MENU › C).
+async function trazer(destino) {
+  const env = readEnvFile();
+  const state = readState();
+  if (!state.importToken || !state.workersDev) throw new Error('Este PC não tem os dados da publicação na nuvem (data\\nuvem.json). Rode no PC que publicou o cérebro.');
+  c.step('Ferramenta da Cloudflare');
+  ensureWrangler();
+  let who = wrangler(['whoami'], { capture: true });
+  if (who.code !== 0 || /not authenticated|You are not/i.test(who.out)) {
+    c.warn('Vai abrir o navegador para você autorizar o Wrangler na sua conta Cloudflare.');
+    if (wrangler(['login']).code !== 0) throw new Error('Login no Cloudflare não concluído.');
+  }
+  // o endereço oficial ainda chega na nuvem? (depois da virada para a VPS, NÃO devolve a rota para a nuvem)
+  let naNuvem = false;
+  try { const r = await fetch(`https://${HOSTNAME}/healthz`, { cache: 'no-store' }); naNuvem = r.headers.get('x-lorler-runtime') === 'cloudflare'; } catch { /* */ }
+  c.step(`Atualizando o Worker da nuvem (saída de dados)${naNuvem ? '' : ' — sem a rota, o endereço oficial já não está na nuvem'}`);
+  deploy(env, naNuvem);
+  const base = state.workersDev.replace(/\/+$/, '');
+  if (!(await waitHealthy(base, { tries: 20 }))) throw new Error(`A nuvem não respondeu em ${base}/healthz.`);
+  c.step('Baixando os dados e congelando a nuvem');
+  let res = null;
+  for (let i = 0; i < 10; i++) {
+    res = await fetch(`${base}/api/admin/export-snapshot?congelar=1`, { headers: { 'x-import-token': state.importToken }, cache: 'no-store' }).catch(() => null);
+    if (res && res.status !== 404) break; // 404: a versão nova ainda está se espalhando pela Cloudflare
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  if (!res || res.status !== 200) throw new Error(`A nuvem recusou a saída de dados (HTTP ${res ? res.status : 'sem resposta'}).`);
+  const snap = await res.json();
+  if (!Array.isArray(snap.tables)) throw new Error('Resposta da nuvem sem as tabelas.');
+  const file = path.resolve(ROOT, destino || path.join('data', 'nuvem-export.json'));
+  fs.writeFileSync(file, JSON.stringify(snap), { mode: 0o600 });
+  const total = snap.tables.reduce((a, t) => a + t.rows.length, 0);
+  const users = snap.tables.find((t) => t.name === 'users')?.rows.length ?? 0;
+  c.ok(`${snap.tables.length} tabelas, ${total} registros (${users} usuário(s)) em ${file}`);
+  c.ok(`Nuvem congelada desde ${snap.frozen_at} (só leitura). Para desfazer: node scripts\\nuvem.js descongelar`);
+  state.exportedAt = snap.exported_at; state.frozenAt = snap.frozen_at; saveState(state);
+  console.log('\n  Próximo passo: o VPS-MENU › C leva este arquivo, o .env e a chave para a VPS e liga o cérebro lá (se você veio por ele, ele continua sozinho).');
+}
+
+async function descongelar() {
+  const state = readState();
+  if (!state.importToken || !state.workersDev) throw new Error('Sem data\\nuvem.json neste PC.');
+  const r = await fetch(`${state.workersDev.replace(/\/+$/, '')}/api/admin/unfreeze`, { method: 'POST', headers: { 'x-import-token': state.importToken } });
+  if (r.status !== 200) throw new Error(`A nuvem recusou (HTTP ${r.status}).`);
+  delete state.frozenAt; saveState(state);
+  c.ok('Nuvem descongelada: volta a gravar normalmente.');
+}
+
 const [cmd, ...args] = process.argv.slice(2);
 try {
   if (cmd === 'exportar') {
@@ -290,8 +346,12 @@ try {
     if (r.status !== 200) process.exitCode = 1;
   } else if (cmd === 'publicar') {
     await publicar();
+  } else if (cmd === 'trazer') {
+    await trazer(args[0]);
+  } else if (cmd === 'descongelar') {
+    await descongelar();
   } else {
-    console.log('Uso: node scripts/nuvem.js publicar | exportar <arquivo> | importar <url> <token> [arquivo]');
+    console.log('Uso: node scripts/nuvem.js publicar | exportar <arquivo> | importar <url> <token> [arquivo] | trazer [arquivo] | descongelar');
   }
 } catch (e) {
   console.error(`\n  \x1b[31m[ERRO]\x1b[0m ${e.message}`);

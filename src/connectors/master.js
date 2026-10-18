@@ -22,6 +22,9 @@ const cfg = () => ({
   username: process.env.LORLER_MASTER_USERNAME || '',
   password: secret('LORLER_SECRET_MASTER_PASSWORD'),
   totp: secret('LORLER_SECRET_MASTER_TOTP'),
+  // Master oculto na VPS (lorler-master-oculto): passe da porta, igual ao do navegador que entrou pelo link secreto.
+  // A VPS preenche sozinha em /etc/lorler/cerebro.env; vazio = Master aberto (sem ocultamento).
+  porta: process.env.LORLER_MASTER_PORTA || '',
 });
 export const isConfigured = () => { const c = cfg(); return !!(c.url && c.username && c.password); };
 export const masterInfo = () => { const c = cfg(); return { url: c.url || null, username: c.username || null, password_configured: !!c.password, totp_configured: !!c.totp, configured: isConfigured() }; };
@@ -62,7 +65,7 @@ async function raw(path, { method = 'GET', body, token } = {}) {
   const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 20000);
   let res;
   try {
-    res = await masterHooks.fetch(url, { method, signal: ac.signal, redirect: 'manual', headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), 'User-Agent': 'LORLER-Central-de-Decisoes' }, body: body ? JSON.stringify(body) : undefined });
+    res = await masterHooks.fetch(url, { method, signal: ac.signal, redirect: 'manual', headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(/^[A-Za-z0-9_-]{20,100}$/.test(c.porta) ? { Cookie: `lorler_porta=${c.porta}` } : {}), 'User-Agent': 'LORLER-Central-de-Decisoes' }, body: body ? JSON.stringify(body) : undefined });
   } catch (e) {
     throw new MasterError('timeout', e.name === 'AbortError' ? 'Tempo limite ao falar com a Área Master.' : 'Falha de conexão com a Área Master.', { uncertain: method !== 'GET' });
   } finally { clearTimeout(timer); }

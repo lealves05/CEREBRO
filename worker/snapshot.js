@@ -48,3 +48,40 @@ export async function importSnapshot(obj, request) {
   await ctx.storage.setAlarm(Date.now() + 2000);
   return json(200, { ok: true, users: q.get('SELECT COUNT(*) AS c FROM users').c, counts });
 }
+
+// ---------- saída da nuvem (mudança para a VPS) ----------
+// GET  /api/admin/export-snapshot?congelar=1  → todas as tabelas do banco do Durable Object, no mesmo formato do
+//      exportSnapshot do PC (scripts/nuvem.js). Com congelar=1 a nuvem passa a recusar gravações (503) e para a fila dos
+//      agentes, para nada ser gravado aqui depois da cópia (o WhatsApp da Meta tenta de novo e chega no servidor novo).
+// POST /api/admin/unfreeze                    → desfaz o congelamento (se a mudança for cancelada).
+// Ambos exigem o x-import-token (LORLER_IMPORT_TOKEN, guardado em data/nuvem.json no PC).
+export const isFrozen = (ctx) => !!ctx.storage.kv.get('frozen_at');
+
+export async function exportSnapshotDO(obj, request) {
+  const { ctx, env } = obj;
+  const json = (status, data) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  if (!env.LORLER_IMPORT_TOKEN || !sameToken(request.headers.get('x-import-token'), env.LORLER_IMPORT_TOKEN)) return json(403, { error: 'token inválido' });
+  const url = new URL(request.url);
+  if (url.searchParams.get('congelar') === '1' && !isFrozen(ctx)) ctx.storage.kv.put('frozen_at', new Date().toISOString());
+  const names = ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'schema_migrations' ORDER BY rowid")
+    .toArray().map((r) => r.name);
+  const tables = names.map((name) => ({
+    name,
+    rows: ctx.storage.sql.exec(`SELECT * FROM "${name.replace(/"/g, '""')}"`).toArray().map((row) => {
+      const o = {};
+      for (const [k, v] of Object.entries(row)) o[k] = v instanceof ArrayBuffer ? Buffer.from(v).toString('base64') : v;
+      return o;
+    }),
+  }));
+  const migrations = ctx.storage.sql.exec('SELECT version FROM schema_migrations ORDER BY version').toArray().map((r) => r.version);
+  return json(200, { exported_at: new Date().toISOString(), source: 'cloudflare-durable-object', frozen_at: ctx.storage.kv.get('frozen_at') || null, migrations, tables });
+}
+
+export async function unfreezeDO(obj, request) {
+  const { ctx, env } = obj;
+  try { await request.arrayBuffer(); } catch { /* */ }
+  if (!env.LORLER_IMPORT_TOKEN || !sameToken(request.headers.get('x-import-token'), env.LORLER_IMPORT_TOKEN)) return new Response(JSON.stringify({ error: 'token inválido' }), { status: 403 });
+  ctx.storage.kv.delete('frozen_at');
+  await ctx.storage.setAlarm(Date.now() + 1000);
+  return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
+}

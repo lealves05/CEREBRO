@@ -6,7 +6,7 @@ import { platform } from '../src/platform.js';
 import { refreshConfig } from '../src/config.js';
 import { setDriver, migrate, q } from '../src/db.js';
 import { makeReq, makeRes } from './shim.js';
-import { importSnapshot } from './snapshot.js';
+import { importSnapshot, exportSnapshotDO, unfreezeDO, isFrozen } from './snapshot.js';
 import m001 from '../migrations/001_init.sql';
 import m002 from '../migrations/002_marketing_instagram.sql';
 import m003 from '../migrations/003_whatsapp.sql';
@@ -71,6 +71,13 @@ export class Cerebro extends DurableObject {
     await this.ready;
     const url = new URL(request.url);
     if (url.pathname === '/api/admin/import-snapshot' && request.method === 'POST') return importSnapshot(this, request);
+    if (url.pathname === '/api/admin/export-snapshot' && request.method === 'GET') return exportSnapshotDO(this, request);
+    if (url.pathname === '/api/admin/unfreeze' && request.method === 'POST') return unfreezeDO(this, request);
+    // congelado para a mudança de servidor: só leitura (o WhatsApp da Meta repete a entrega mais tarde, já no servidor novo)
+    if (isFrozen(this.ctx) && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+      try { await request.arrayBuffer(); } catch { /* */ }
+      return new Response(JSON.stringify({ error: { code: 'moving', message: 'O cérebro está mudando de servidor. Tente de novo em alguns minutos.' } }), { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '120' } });
+    }
     const req = makeReq(request, url);
     const res = makeRes(req);
     const body = ['GET', 'HEAD'].includes(request.method) ? null : Buffer.from(await request.arrayBuffer());
@@ -81,6 +88,7 @@ export class Cerebro extends DurableObject {
 
   async alarm() {
     await this.ready;
+    if (isFrozen(this.ctx)) return; // mudança de servidor: a fila continua no servidor novo
     const { drainQueue } = await import('../src/orchestrator/engine.js');
     let r = { pending: 0 };
     try { r = await drainQueue({ concurrency: 2, maxMs: 12 * 60_000 }); } catch (e) { console.error('[alarme]', e.message); }
