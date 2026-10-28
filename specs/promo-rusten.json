@@ -1,0 +1,49 @@
+{
+ "cor": "#d08a4a",
+ "pill": "rusten.lorler.com.br",
+ "cenas": [
+  {
+   "tipo": "gancho",
+   "l1": "Consumo lançado",
+   "l2": "não é dinheiro no caixa.",
+   "sub": "RUSTEN · gestão para bares e restaurantes",
+   "dur": 3.4
+  },
+  {
+   "tipo": "tela",
+   "video": "fontes/telas/rusten.mp4",
+   "inicio": 0,
+   "recorte": [
+    0.0,
+    0.1,
+    0.72,
+    0.75
+   ],
+   "titulo": "O dia do bar, na real",
+   "legenda": "Consumo lançado, recebido, mesas ocupadas e itens em preparo.",
+   "dur": 5.5,
+   "proporcao": 0.85
+  },
+  {
+   "tipo": "lista",
+   "titulo": "O que o RUSTEN organiza",
+   "itens": [
+    "PDV com comandas, mesas e balcão",
+    "Caixa e divergências do dia",
+    "Os mais pedidos de hoje"
+   ],
+   "dur": 5.5
+  },
+  {
+   "tipo": "cta",
+   "l1": "Teste grátis",
+   "l2": "rusten.lorler.com.br",
+   "sub": "Ou peça uma demonstração guiada em lorler.com.br",
+   "dur": 4
+  }
+ ],
+ "formato": "9x16",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "musica": true
+}

@@ -1,0 +1,49 @@
+{
+ "cor": "#ef6a24",
+ "pill": "torven.lorler.com.br",
+ "cenas": [
+  {
+   "tipo": "gancho",
+   "l1": "Quantas OS estão",
+   "l2": "atrasadas agora?",
+   "sub": "TORVEN · gestão para oficinas, funilarias e serralherias",
+   "dur": 3.2
+  },
+  {
+   "tipo": "tela",
+   "video": "fontes/telas/torven.mp4",
+   "inicio": 0,
+   "recorte": [
+    0.2,
+    0.12,
+    0.8,
+    0.72
+   ],
+   "titulo": "A resposta na primeira tela",
+   "legenda": "OS em aberto, atrasadas e prontas para entrega, sem caçar papel.",
+   "dur": 5.5,
+   "proporcao": 0.85
+  },
+  {
+   "tipo": "lista",
+   "titulo": "O que o TORVEN organiza",
+   "itens": [
+    "Ordens de serviço por etapa",
+    "Orçamentos pendentes à vista",
+    "Entradas, saídas e contas a receber"
+   ],
+   "dur": 5.5
+  },
+  {
+   "tipo": "cta",
+   "l1": "Teste grátis",
+   "l2": "torven.lorler.com.br",
+   "sub": "Ou peça uma demonstração guiada em lorler.com.br",
+   "dur": 4
+  }
+ ],
+ "formato": "9x16",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "musica": true
+}
