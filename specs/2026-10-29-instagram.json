@@ -1,0 +1,15 @@
+{
+ "formato": "9x16",
+ "cor": "#f7920f",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Domingo muda", "l2": "a nota de serviço", "sub": "Simples Nacional, a partir de 1º de novembro", "dur": 3},
+  {"tipo": "texto", "titulo": "Emissor Nacional da NFS-e", "corpo": "Empresa do Simples que presta serviço passa a emitir a nota pelo portal nacional ou por integração via API.\nResolução CGSN 191/2026.", "dur": 5.5},
+  {"tipo": "lista", "titulo": "Antes de segunda-feira", "itens": ["Teste o acesso ao Emissor Nacional", "Confirme a integração do seu sistema", "Alinhe a emissão com o contador"], "dur": 5},
+  {"tipo": "texto", "titulo": "CBS e IBS seguem para 2027", "corpo": "A troca de emissor não antecipa os novos tributos no Simples.", "dur": 4},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "Sistemas de gestão para pequenos negócios", "logo": true, "dur": 3.5}
+ ]
+}

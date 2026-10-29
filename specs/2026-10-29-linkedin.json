@@ -1,0 +1,13 @@
+{
+ "formato": "4x5",
+ "cor": "#0a9893",
+ "marca": "R2L2 ENGETECH",
+ "marca_sub": "ENGENHARIA",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Preventiva em dia", "l2": "não é equipamento calibrado", "sub": "Engenharia clínica", "dur": 3.2},
+  {"tipo": "texto", "titulo": "Três serviços diferentes", "corpo": "Calibração compara a leitura com um padrão rastreável.\nVerificação confere se o erro está dentro da tolerância.\nPreventiva é a intervenção programada.", "dur": 5.5},
+  {"tipo": "lista", "titulo": "O que a OS precisa registrar", "itens": ["Número de série do equipamento", "Padrão usado e certificado", "Valores encontrados e critério", "Quem executou e quando"], "dur": 5.5},
+  {"tipo": "cta", "l1": "Engenharia que se mede", "l2": "r2l2engetech", "sub": "Gestão de parque e rastreabilidade", "logo": false, "dur": 3.5}
+ ]
+}
