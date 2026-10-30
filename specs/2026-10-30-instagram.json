@@ -1,0 +1,15 @@
+{
+ "formato": "9x16",
+ "cor": "#f7920f",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Escala 5x2 começa", "l2": "em dezembro", "sub": "Emenda Constitucional 141/2026", "dur": 3},
+  {"tipo": "texto", "titulo": "40 horas por semana", "corpo": "A jornada cai de 44 para 40 horas em 14 meses, sem redução de salário.\nFonte: Agência Brasil", "dur": 5},
+  {"tipo": "lista", "titulo": "O que fazer agora", "itens": ["Conte quem cobre sábado e domingo", "Planeje duas folgas por pessoa", "Fale com o contador antes de mudar contrato"], "dur": 5.5},
+  {"tipo": "texto", "titulo": "Sem prazo por setor", "corpo": "O MTE prepara portaria com a transição.\nSalão, bar e oficina seguem a mesma regra.", "dur": 4.5},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "Sistemas de gestão para pequenos negócios", "logo": true, "dur": 3.5}
+ ]
+}

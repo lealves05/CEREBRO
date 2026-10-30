@@ -1,0 +1,13 @@
+{
+ "formato": "4x5",
+ "cor": "#0a9893",
+ "marca": "R2L2 ENGETECH",
+ "marca_sub": "ENGENHARIA",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Pressão positiva na entrega", "l2": "invertida seis meses depois", "sub": "Climatização da CME", "dur": 3.4},
+  {"tipo": "texto", "titulo": "Anvisa revisa o reprocessamento", "corpo": "CPs 1.420 a 1.423 em consulta até janeiro de 2027.\nA RDC 15/2012 deve ser substituída.", "dur": 5},
+  {"tipo": "lista", "titulo": "Evidência que a CME precisa ter", "itens": ["Pressão diferencial com registro diário", "Vazão medida contra o projeto", "Perda de carga do filtro na troca", "Salas da CME no PMOC"], "dur": 5.8},
+  {"tipo": "cta", "l1": "Engenharia que se mede", "l2": "r2l2engetech", "sub": "AVAC hospitalar e NBR 7256", "logo": false, "dur": 3.5}
+ ]
+}
