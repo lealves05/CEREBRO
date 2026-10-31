@@ -1,0 +1,47 @@
+{
+ "formato": "9x16",
+ "cor": "#f7920f",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {
+   "tipo": "gancho",
+   "l1": "Pix MEI",
+   "l2": "o cadastro é golpe",
+   "sub": "Alerta do governo federal, 29/10",
+   "dur": 3
+  },
+  {
+   "tipo": "texto",
+   "titulo": "O programa ainda não existe",
+   "corpo": "Previsto para 2027, em estruturação.\nSem inscrições abertas e sem pagamento liberado.",
+   "dur": 5
+  },
+  {
+   "tipo": "lista",
+   "titulo": "Sinais de golpe",
+   "itens": [
+    "Pedido de taxa ou depósito",
+    "Link para cadastrar chave Pix",
+    "Promessa de pagamento imediato"
+   ],
+   "dur": 5
+  },
+  {
+   "tipo": "texto",
+   "titulo": "Onde confirmar",
+   "corpo": "Só nos canais oficiais: gov.br/memp\nFonte: Secom, 29/10/2026",
+   "dur": 4
+  },
+  {
+   "tipo": "cta",
+   "l1": "Gestão sem improviso",
+   "l2": "lorler.com.br",
+   "sub": "Sistemas de gestão para pequenos negócios",
+   "logo": true,
+   "dur": 3.5
+  }
+ ]
+}

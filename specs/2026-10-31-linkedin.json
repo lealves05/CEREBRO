@@ -1,0 +1,13 @@
+{
+ "formato": "4x5",
+ "cor": "#0a9893",
+ "marca": "R2L2 ENGETECH",
+ "marca_sub": "ENGENHARIA",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Leitura duas vezes por dia", "l2": "deixa a madrugada sem registro", "sub": "IoT na rede de frio", "dur": 3.4},
+  {"tipo": "texto", "titulo": "Faixa de 2 °C a 8 °C", "corpo": "Câmara científica refrigerada para vacinas.\nFonte: Manual de Rede de Frio do PNI, 2025.", "dur": 5},
+  {"tipo": "lista", "titulo": "Telemetria que vira evidência", "itens": ["Leitura publicada por MQTT", "Alarme por tempo fora da faixa", "Buffer local no gateway", "Sensor com calibração rastreável"], "dur": 5.8},
+  {"tipo": "cta", "l1": "Engenharia que se mede", "l2": "r2l2engetech", "sub": "IoT e monitoramento de equipamentos", "logo": false, "dur": 3.5}
+ ]
+}
