@@ -1,0 +1,14 @@
+{
+ "formato": "4x5",
+ "cor": "#f7920f",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Cadastro desatualizado", "l2": "suspende o registro", "sub": "Resolução CNSP 493/2026, vigência em 17/01/2027", "dur": 3.4},
+  {"tipo": "lista", "titulo": "O que a corretora precisa controlar", "itens": ["Revisão do cadastro do corretor", "Preposto inativo excluído na hora", "Comissão vinculada a cada apólice", "Estorno proporcional no cancelamento"], "dur": 6},
+  {"tipo": "texto", "titulo": "180 dias", "corpo": "Prazo para o corretor se manifestar após a suspensão. Depois disso, o registro é cancelado.\nFonte: Demarest, 27/07/2026", "dur": 5},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "Sistemas de gestão para pequenas empresas", "logo": true, "dur": 3.5}
+ ]
+}

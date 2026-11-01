@@ -1,0 +1,15 @@
+{
+ "formato": "9x16",
+ "cor": "#9b6bff",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "orbi.lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Celular antigo", "l2": "perde o WhatsApp", "sub": "Mudança vale a partir de novembro", "dur": 3},
+  {"tipo": "texto", "titulo": "Versão mínima exigida", "corpo": "Android 6.0 ou iOS 15.5.\nAbaixo disso, o aplicativo deixa de funcionar.\nFonte: CRN1 e O Globo, 31/10", "dur": 5},
+  {"tipo": "lista", "titulo": "Antes de trocar o aparelho do balcão", "itens": ["Confira a versão em Configurações", "Faça o backup das conversas", "Tire a agenda de dentro do celular"], "dur": 5},
+  {"tipo": "tela", "video": "fontes/telas/orbi.mp4", "inicio": 0, "recorte": [0, 0.07, 0.7, 0.78], "proporcao": 0.85, "titulo": "Agenda no sistema", "legenda": "Horários por profissional, fora de um único aparelho.", "dur": 4.5},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "orbi.lorler.com.br", "sub": "Sistemas de gestão para pequenos negócios", "logo": true, "dur": 3.5}
+ ]
+}
