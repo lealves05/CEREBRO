@@ -1,0 +1,13 @@
+{
+ "formato": "4x5",
+ "cor": "#0a9893",
+ "marca": "R2L2 ENGETECH",
+ "marca_sub": "ENGENHARIA",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "O alerta traz lote e série", "l2": "onde está o equipamento?", "sub": "Tecnovigilância na engenharia clínica", "dur": 3.4},
+  {"tipo": "texto", "titulo": "RDC 551/2021", "corpo": "Art. 7º: a mensagem de alerta informa modelo e lote ou série afetados.\nArt. 14: identificar o produto e segregar quando couber.", "dur": 5},
+  {"tipo": "lista", "titulo": "O que o inventário precisa responder", "itens": ["Modelo e número de série", "Setor e data da última movimentação", "Alerta vinculado à OS", "Evidência de fechamento por unidade"], "dur": 5.8},
+  {"tipo": "cta", "l1": "Engenharia que se mede", "l2": "r2l2engetech", "sub": "Gestão de parque e rastreabilidade", "logo": false, "dur": 3.5}
+ ]
+}

@@ -1,0 +1,15 @@
+{
+ "formato": "9x16",
+ "cor": "#f7920f",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Pix na Black Friday", "l2": "devolução não é garantida", "sub": "MED 2.0 com rastreio em etapas desde 26/10", "dur": 3},
+  {"tipo": "texto", "titulo": "O que mudou", "corpo": "A notificação entre bancos informa a etapa do rastreamento.\nMudança interna: não precisa atualizar aplicativo.\nFonte: TechTudo, com dados do BC", "dur": 5},
+  {"tipo": "lista", "titulo": "Prazos e limites", "itens": ["Pedido em até 80 dias", "Análise em até 7 dias", "Sem saldo, devolução parcial ou nenhuma", "Desacordo comercial fica de fora"], "dur": 5.5},
+  {"tipo": "lista", "titulo": "No balcão", "itens": ["Confira a entrada no extrato", "Não libere só com comprovante enviado", "Golpe: acione o banco na hora"], "dur": 4.5},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "Sistemas de gestão para pequenos negócios", "logo": true, "dur": 3.5}
+ ]
+}
