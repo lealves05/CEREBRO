@@ -1,0 +1,13 @@
+{
+ "formato": "4x5",
+ "cor": "#0a9893",
+ "marca": "R2L2 ENGETECH",
+ "marca_sub": "ENGENHARIA",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Split na parede", "l2": "não é renovação de ar", "sub": "Climatização em odontologia e NBR 7256", "dur": 3.4},
+  {"tipo": "texto", "titulo": "RDC Anvisa 1.002/2025", "corpo": "Art. 182: 360 dias para adequação, contados da publicação em 16/12/2025.\nArt. 14: consultório coletivo e sala de imagem pedem sistema conforme a NBR 7256.", "dur": 5.4},
+  {"tipo": "lista", "titulo": "O que ter por sala", "itens": ["Classificação do ambiente", "Vazão de ar externo medida", "Classe do filtro e registro de troca", "PMOC: Lei 13.589/2018, à parte"], "dur": 5.6},
+  {"tipo": "cta", "l1": "Engenharia que se mede", "l2": "r2l2engetech", "sub": "AVAC em estabelecimentos de saúde", "logo": false, "dur": 3.5}
+ ]
+}
