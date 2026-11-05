@@ -1,0 +1,13 @@
+{
+ "formato": "4x5",
+ "cor": "#0a9893",
+ "marca": "R2L2 ENGETECH",
+ "marca_sub": "ENGENHARIA",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Invadiram o controlador", "l2": "e o freezer foi a 50 °C", "sub": "Ataques na Europa, segundo a CNN Brasil", "dur": 3.4},
+  {"tipo": "texto", "titulo": "Alarme com caminho próprio", "corpo": "Se o alerta sai do mesmo controlador que comanda a refrigeração, o invasor pode esconder o desvio.\nUse outra sonda e outro canal.", "dur": 5.2},
+  {"tipo": "lista", "titulo": "Antes de conectar a câmara", "itens": ["Inventário dos controladores", "Painel fora da internet", "Senha padrão trocada e MFA", "Rede separada da administrativa"], "dur": 5.6},
+  {"tipo": "cta", "l1": "Engenharia que se mede", "l2": "r2l2engetech", "sub": "IoT e monitoramento de equipamentos", "logo": false, "dur": 3.5}
+ ]
+}

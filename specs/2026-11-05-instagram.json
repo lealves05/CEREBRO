@@ -1,0 +1,15 @@
+{
+ "formato": "9x16",
+ "cor": "#f7920f",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Teto do Simples", "l2": "pode subir, ainda não subiu", "sub": "Relator fala em votar na Câmara em novembro", "dur": 3},
+  {"tipo": "texto", "titulo": "O que vale hoje", "corpo": "Microempresa: R$ 360 mil por ano.\nEmpresa de pequeno porte: R$ 4,8 milhões por ano.", "dur": 4.5},
+  {"tipo": "texto", "titulo": "O que é proposta", "corpo": "R$ 870 mil e R$ 8,7 milhões, em etapas até 2029.\nFalta Câmara, Senado e sanção.\nFonte: Fenacon, 05/11", "dur": 5},
+  {"tipo": "lista", "titulo": "No seu negócio", "itens": ["Não conte com o teto novo", "Acompanhe o acumulado do ano", "Leve a conta ao contador"], "dur": 4.5},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "Sistemas de gestão para pequenos negócios", "logo": true, "dur": 3.5}
+ ]
+}
