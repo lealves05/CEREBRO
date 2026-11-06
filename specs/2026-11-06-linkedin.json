@@ -1,0 +1,42 @@
+{
+  "formato": "4x5",
+  "cor": "#f7920f",
+  "marca": "LORLER",
+  "marca_sub": "SISTEMAS DE GESTÃO",
+  "pill": "lorler.com.br",
+  "musica": true,
+  "cenas": [
+    {
+      "tipo": "gancho",
+      "l1": "Vendas subiram 10,8%",
+      "l2": "só 36% tiveram lucro",
+      "sub": "Bares e restaurantes, setembro de 2026",
+      "dur": 3.4
+    },
+    {
+      "tipo": "texto",
+      "titulo": "O que cada número mede",
+      "corpo": "Índice Abrasel-Stone: transações de venda.\nPesquisa Abrasel: resultado da empresa.\nFonte: Agora RN, 03/11",
+      "dur": 5.2
+    },
+    {
+      "tipo": "lista",
+      "titulo": "Para enxergar a margem",
+      "itens": [
+        "Venda separada por canal",
+        "Taxa lançada junto da venda",
+        "Ficha técnica com custo atual",
+        "Fechamento com margem por canal"
+      ],
+      "dur": 5.6
+    },
+    {
+      "tipo": "cta",
+      "l1": "Gestão sem improviso",
+      "l2": "lorler.com.br",
+      "sub": "Sistemas de gestão para pequenas empresas",
+      "logo": true,
+      "dur": 3.5
+    }
+  ]
+}

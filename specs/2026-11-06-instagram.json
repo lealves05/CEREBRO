@@ -1,0 +1,51 @@
+{
+  "formato": "9x16",
+  "cor": "#f7920f",
+  "marca": "LORLER",
+  "marca_sub": "SISTEMAS DE GESTÃO",
+  "pill": "lorler.com.br",
+  "musica": true,
+  "cenas": [
+    {
+      "tipo": "gancho",
+      "l1": "Perdão do MEI",
+      "l2": "não libera o DAS",
+      "sub": "Lei Complementar 238/2026",
+      "dur": 3
+    },
+    {
+      "tipo": "texto",
+      "titulo": "O que entra",
+      "corpo": "Débitos federais até 13/10/2026: previdência, multa e juros.\nInício previsto: 1º/01/2027.\nFonte: Agência Brasil",
+      "dur": 5
+    },
+    {
+      "tipo": "lista",
+      "titulo": "O que fica fora",
+      "itens": [
+        "ISS e ICMS",
+        "Débito federal após 13/10",
+        "Devolução do que já foi pago"
+      ],
+      "dur": 4.5
+    },
+    {
+      "tipo": "lista",
+      "titulo": "No seu negócio",
+      "itens": [
+        "Guia em dia nos seis meses",
+        "Comprovante guardado",
+        "Requerimento: confirme na PGFN"
+      ],
+      "dur": 4.5
+    },
+    {
+      "tipo": "cta",
+      "l1": "Gestão sem improviso",
+      "l2": "lorler.com.br",
+      "sub": "Sistemas de gestão para pequenos negócios",
+      "logo": true,
+      "dur": 3.5
+    }
+  ]
+}
