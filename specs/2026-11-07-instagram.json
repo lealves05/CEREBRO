@@ -1,0 +1,15 @@
+{
+ "formato": "9x16",
+ "cor": "#d08a4a",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Imposto novo", "l2": "do bar tem número, mas não é final", "sub": "CBS começa em 2027", "dur": 3},
+  {"tipo": "texto", "titulo": "O que se sabe", "corpo": "Referência do TCU: 11,35%.\nBares e restaurantes: redução de 40%.\nNa conta: cerca de 6,8%.\nFonte: Mercado&Consumo", "dur": 5.2},
+  {"tipo": "lista", "titulo": "O que falta", "itens": ["Relator no Senado discorda", "Votação até dezembro", "Sem votação, vale o TCU"], "dur": 4.5},
+  {"tipo": "tela", "video": "fontes/telas/rusten.mp4", "inicio": 0, "recorte": [0, 0.07, 0.7, 0.78], "proporcao": 0.85, "titulo": "Antes de mexer no preço", "legenda": "Venda e recebimento do dia no painel", "dur": 5},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "RUSTEN: gestão para bares e restaurantes", "logo": true, "dur": 3.5}
+ ]
+}

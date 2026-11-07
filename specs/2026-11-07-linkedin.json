@@ -1,0 +1,13 @@
+{
+ "formato": "4x5",
+ "cor": "#0a9893",
+ "marca": "R2L2 ENGETECH",
+ "marca_sub": "ENGENHARIA",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Certificado arquivado", "l2": "não é equipamento aprovado", "sub": "Análise crítica da calibração", "dur": 3.4},
+  {"tipo": "texto", "titulo": "Quem decide", "corpo": "O laboratório informa erro e incerteza em cada ponto.\nA engenharia clínica compara com a tolerância definida antes e registra a decisão.", "dur": 5},
+  {"tipo": "lista", "titulo": "O que conferir no certificado", "itens": ["Patrimônio e série iguais ao inventário", "Pontos dentro da faixa de uso", "Erro mais incerteza contra a tolerância", "Decisão registrada na OS"], "dur": 5.8},
+  {"tipo": "cta", "l1": "Engenharia que se mede", "l2": "r2l2engetech", "sub": "Gestão de parque e metrologia", "logo": false, "dur": 3.5}
+ ]
+}
