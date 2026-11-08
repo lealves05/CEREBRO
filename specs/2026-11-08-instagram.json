@@ -1,0 +1,15 @@
+{
+ "formato": "9x16",
+ "cor": "#d08a4a",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "O Pix caiu na sexta", "l2": "seu caixa tinha plano B?", "sub": "Falha parcial em 06/11", "dur": 3},
+  {"tipo": "texto", "titulo": "O que aconteceu", "corpo": "Falha parcial no começo da noite.\nPico de 11.090 reclamações às 19h11.\nO Banco Central diz que já resolveu.\nFonte: Diário do RN", "dur": 5},
+  {"tipo": "lista", "titulo": "Combine com a equipe", "itens": ["Ofereça cartão ou dinheiro", "Print não libera mercadoria", "Confira o crédito no extrato"], "dur": 4.5},
+  {"tipo": "tela", "video": "fontes/telas/rusten.mp4", "inicio": 0, "recorte": [0, 0.07, 0.7, 0.78], "proporcao": 0.85, "titulo": "No fechamento", "legenda": "Conferência do caixa mostra o que entrou de fato", "dur": 4.5},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "RUSTEN: gestão para bares e restaurantes", "logo": true, "dur": 3.5}
+ ]
+}
