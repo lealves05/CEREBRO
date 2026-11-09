@@ -37,5 +37,21 @@ validade, política e revalidação no executor).
    e defina `WHATSAPP_TEMPLATE_APPROVAL=<nome do modelo>`. Sem modelo, os avisos só chegam se você tiver mandado alguma
    mensagem ao número nas últimas 24 h (o painel mostra o erro quando isso acontecer).
 
+6. **Briefing diário (opcional):** em **WhatsApp** no painel, ligue o *Briefing diário* e escolha o horário (fuso da
+   organização). O Cérebro manda receita, riscos e decisões pendentes uma vez por dia, até 3 h depois do horário escolhido
+   (se o servidor estava desligado na hora, ele envia quando voltar dentro dessa janela). Para chegar mesmo sem conversa nas
+   últimas 24 h, crie um segundo modelo *Utilidade* com **uma** variável, por exemplo `Briefing do Cérebro LORLER: {{1}}`,
+   e defina `WHATSAPP_TEMPLATE_BRIEFING=<nome do modelo>`; o texto completo vem logo depois.
+
+### Comandos
+
+| Mensagem | O que faz |
+|---|---|
+| `RESUMO` | Briefing do dia na hora |
+| `RADAR` | Saúde, receita, ativas, cancelamentos e atrasos de cada sistema |
+| `PENDENTES` | Aprovações aguardando você |
+| `VER código` · `APROVAR código` · `REVISAR código o que mudar` · `REJEITAR código motivo` | Decidir pelo celular (aprovar sempre pede o PIN) |
+| texto livre | Conversa com o Cérebro (se *Conversa livre* estiver ligada) |
+
 Referências: [Mensagens com botões](https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/interactive-reply-buttons-messages) ·
 [API de mensagens](https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-phone-number/message-api)

@@ -20,6 +20,7 @@ import { getProvider } from '../ai/provider.js';
 import { addMember } from '../seed.js';
 import { tokensCommitted } from '../services/budget.js';
 import { buildAnalytics, clearAnalyticsCache } from '../services/analytics.js';
+import { buildBriefing } from '../services/briefing.js';
 import { sourceReport } from '../services/reports.js';
 import { bus } from '../orchestrator/events.js';
 import { converse } from '../services/conversation.js';
@@ -596,6 +597,11 @@ router.post('/api/whatsapp/pin', ({ ctx, body }) => { requireRecentAuth(ctx.sess
 router.post('/api/whatsapp/notify', ({ ctx, body }) => waApprovals.setNotify(ctx, !!body.enabled));
 router.post('/api/whatsapp/unlink', ({ ctx }) => waApprovals.unlink(ctx));
 router.post('/api/whatsapp/test', ({ ctx }) => waApprovals.sendTest(ctx));
+router.post('/api/whatsapp/briefing', ({ ctx, body }) => waApprovals.setBriefing(ctx, { enabled: body.enabled == null ? null : !!body.enabled, time: body.time ?? null }));
+router.post('/api/whatsapp/briefing/send', ({ ctx }) => waApprovals.sendBriefingNow(ctx));
+router.get('/api/whatsapp/chat', ({ ctx }) => ({ turns: assistant.waHistory(ctx, 20).map((t) => ({ role: t.role, text: t.text, at: t.created_at })) }));
+// Briefing do dia (tela Comando): cálculos sobre os dados dos sistemas, sem IA
+router.get('/api/briefing', async ({ ctx }) => { requirePerm(ctx, 'view'); return buildBriefing(ctx); });
 router.post('/api/actions/:id/notify-whatsapp', async ({ ctx, params }) => {
   if (!can(ctx, 'approve')) throw errors.forbidden();
   const p = loadOwned('action_proposals', params.id, ctx);

@@ -15,6 +15,7 @@ export const waConfig = () => ({
   businessNumber: (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/\D/g, ''),
   template: process.env.WHATSAPP_TEMPLATE_APPROVAL || '',
   templateLang: process.env.WHATSAPP_TEMPLATE_LANG || 'pt_BR',
+  briefingTemplate: process.env.WHATSAPP_TEMPLATE_BRIEFING || '',
 });
 export const isConfigured = () => { const c = waConfig(); return !!(c.phoneNumberId && c.token && c.appSecret && c.verifyToken); };
 

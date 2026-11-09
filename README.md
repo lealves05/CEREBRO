@@ -63,9 +63,18 @@ Passo a passo em [`docs/INSTAGRAM.md`](docs/INSTAGRAM.md).
 O cérebro lê assinaturas, cobranças, planos e parâmetros de todos os sistemas na Área Master e pode **propor mudanças**
 (teste grátis, carência, aviso, planos, prorrogação de teste) que só são aplicadas com a sua aprovação. Veja [`docs/AREA-MASTER.md`](docs/AREA-MASTER.md).
 
-## Aprovações pelo WhatsApp
+## Interface (nov/2026)
 
-Receba os pedidos com botões Aprovar/Rejeitar/Ver; aprovar pede seu PIN. Veja [`docs/WHATSAPP.md`](docs/WHATSAPP.md).
+- **Comando** — pergunta por texto ou voz, indicadores, briefing do dia, decisões pendentes e sinais em tempo real.
+- **Sala de Decisão** — o que cada agente pensa (com quantos achados têm evidência), recomendação do Coordenador,
+  simulador de cenário (reajuste × cancelamentos × clientes novos, 12 meses) e aprovação.
+- **Radar dos sistemas** — cérebro 3D com neurônios e sinapses (cada agente num lobo), bases ao vivo, saúde e comparativos.
+- **WhatsApp** — vínculo do número, PIN, briefing diário, conversa livre e comandos.
+
+## Aprovações e conversa pelo WhatsApp
+
+Receba os pedidos com botões Aprovar/Rejeitar/Ver (aprovar pede seu PIN), o briefing diário e converse com o Cérebro.
+Comandos: `RESUMO`, `RADAR`, `PENDENTES`, `VER/APROVAR/REVISAR/REJEITAR código`. Veja [`docs/WHATSAPP.md`](docs/WHATSAPP.md).
 
 ## Online
 
