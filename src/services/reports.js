@@ -84,7 +84,7 @@ export async function sourceReport(ctx, code, products) {
     const changes = proposalsFor(ctx.orgId, "tool_code LIKE 'master_%'");
     const st = master.lastMasterStatus();
     return {
-      ...base, title: 'Área Master', subtitle: 'Consolidado de ORBI, TORVEN, RUSTEN e APOLVEN', source: a.source, days: a.days,
+      ...base, title: 'Área Master', subtitle: 'Consolidado de todos os sistemas LORLER', source: a.source, days: a.days,
       kpis: [...productKpis(t), { label: 'Empresas', value: t.tenants, fmt: 'num' }, { label: 'Saúde', value: t.health, fmt: 'num' }],
       chart: pj.chart, projections: pj.list,
       by_product: a.products.filter((p) => p.kpis).map((p) => ({ code: p.code, mrr: p.kpis.mrr, active: p.kpis.active, trial: p.kpis.trial, cash: p.kpis.cash, next30: linearTrend(p.series.cash).total })),

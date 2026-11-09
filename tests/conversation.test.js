@@ -27,7 +27,7 @@ test('saudação, ajuda e números do painel (dados de demonstração identifica
   assert.match(num.body.reply, /No ORBI, recebemos R\$/);
   assert.match(num.body.reply, /demonstração/);
   const geral = await say(c, 'como estão os sistemas?');
-  assert.match(geral.body.reply, /Somando os 4 sistemas/);
+  assert.match(geral.body.reply, /Somando os 6 sistemas/);
 });
 
 test('pedido de aprovação pela voz é recusado e oferece abrir a tela; navegação abre telas conhecidas', async () => {

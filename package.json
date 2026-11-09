@@ -1,7 +1,7 @@
 {
   "name": "lorler-central-de-decisoes",
   "version": "0.3.0",
-  "description": "Central de Decisões LORLER — cérebro multiagente para decisões de gestão de ORBI, TORVEN, RUSTEN e APOLVEN",
+  "description": "Central de Decisões LORLER — cérebro multiagente para decisões de gestão de todos os sistemas LORLER (ORBI, TORVEN, RUSTEN, APOLVEN, ANIBI e CIFREN)",
   "type": "module",
   "private": true,
   "engines": { "node": ">=22.13" },

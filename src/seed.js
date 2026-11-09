@@ -9,9 +9,38 @@ import { audit } from './services/audit.js';
 export const PRODUCTS = [
   ['ORBI', 'ORBI', 'Gestão para salões, barbearias e negócios de beleza'],
   ['TORVEN', 'TORVEN', 'Gestão para assistência técnica, soldas e serralheria'],
-  ['RUSTEN', 'RUSTEN', 'Gestão e PDV para bares e restaurantes'],
-  ['APOLVEN', 'APOLVEN', 'Quarto sistema da família LORLER (cadastro opcional)'],
+  ['RUSTEN', 'RUSTEN', 'Gestão e PDV para bar, restaurante e adega'],
+  ['APOLVEN', 'APOLVEN', 'Gestão de vendas da família LORLER'],
+  ['ANIBI', 'ANIBI', 'Pet shop, banho e tosa e clínica veterinária'],
+  ['CIFREN', 'CIFREN', 'Gestão financeira: contas a pagar e receber, conciliação, DRE e fluxo de caixa'],
 ];
+export const SYSTEM_CODES = PRODUCTS.map((p) => p[0]);
+// descrições padrão antigas: trocadas pelas atuais (as escritas à mão pelo dono ficam como estão)
+const OLD_DESCRIPTIONS = ['Quarto sistema da família LORLER (cadastro opcional)', 'Gestão e PDV para bares e restaurantes'];
+
+/** Sistemas novos da família LORLER entram sozinhos nas organizações que já existem (com integração pendente). Quem já
+ * enxergava todos os sistemas (owner ou escopo completo) passa a enxergar também os novos. */
+export function ensureProducts(orgId) {
+  tx(() => {
+    for (const [code, , desc] of PRODUCTS) q.run(`UPDATE products SET description = ? WHERE organization_id = ? AND code = ? AND description IN (${OLD_DESCRIPTIONS.map(() => '?').join(',')})`, desc, orgId, code, ...OLD_DESCRIPTIONS);
+    const before = q.all("SELECT id FROM products WHERE organization_id = ? AND status = 'active'", orgId).map((r) => r.id);
+    const added = [];
+    for (const [code, pname, desc] of PRODUCTS) {
+      if (q.get('SELECT id FROM products WHERE organization_id = ? AND code = ?', orgId, code)) continue;
+      const pid = uuid();
+      insert('products', { id: pid, organization_id: orgId, code, name: pname, description: desc, status: 'active' });
+      insert('integrations', { id: uuid(), organization_id: orgId, product_id: pid, adapter: `${code.toLowerCase()}-v1`, adapter_version: '1.0', base_url: null, secret_ref: `LORLER_SECRET_${code}`, status: 'pending_setup' });
+      added.push(pid);
+      audit({ orgId, event: 'product.installed', objectType: 'product', objectId: pid, metadata: { code } });
+    }
+    if (!added.length) return;
+    for (const m of q.all("SELECT id, role FROM organization_members WHERE organization_id = ? AND status = 'active'", orgId)) {
+      const scoped = new Set(q.all('SELECT product_id FROM member_product_scopes WHERE member_id = ?', m.id).map((r) => r.product_id));
+      if (m.role !== 'owner' && !before.every((id) => scoped.has(id))) continue;
+      for (const pid of added) insert('member_product_scopes', { id: uuid(), organization_id: orgId, member_id: m.id, product_id: pid, permission: 'read_aggregate', source_scope_ref: null });
+    }
+  });
+}
 
 export function ensureTools() {
   for (const [code, type, description] of TOOL_DEFS) {
@@ -105,7 +134,7 @@ export function ensureSeed() {
   const org = q.get('SELECT id FROM organizations ORDER BY created_at LIMIT 1');
   if (org) {
     ensureTools();
-    for (const o of q.all('SELECT id FROM organizations')) upgradeOrganization(o.id);
+    for (const o of q.all('SELECT id FROM organizations')) { upgradeOrganization(o.id); ensureProducts(o.id); }
     return org.id;
   }
   return createOrganization('LORLER');

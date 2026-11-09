@@ -64,6 +64,18 @@ const DATA = {
     m('cancellations', null, 'subscriptions', 'unavailable'),
     m('variable_cost_per_subscription', null, 'money', 'unavailable'),
   ],
+  ANIBI: [
+    m('active_subscriptions_at_period_end', '5', 'subscriptions', 'partial', { note: 'Produto em lançamento' }),
+    m('new_subscriptions', '5', 'subscriptions', 'partial'),
+    m('cancellations', '0', 'subscriptions', 'partial'),
+    m('variable_cost_per_subscription', null, 'money', 'unavailable'),
+  ],
+  CIFREN: [
+    m('active_subscriptions_at_period_end', '3', 'subscriptions', 'partial', { note: 'Produto em lançamento' }),
+    m('new_subscriptions', '3', 'subscriptions', 'partial'),
+    m('cancellations', '0', 'subscriptions', 'partial'),
+    m('variable_cost_per_subscription', null, 'money', 'unavailable'),
+  ],
 };
 
 export const DEMO_CANCEL_REASONS = {

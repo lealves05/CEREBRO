@@ -419,7 +419,7 @@ function lastMonthPeriod() {
   return { start: start.toISOString(), end_exclusive: end.toISOString() };
 }
 async function askBrain(question, products, mode = 'real') {
-  const r = await api('POST', '/api/decisions', { question, product_ids: products.filter((p) => p.in_scope && p.code !== 'APOLVEN').map((p) => p.id), decision_type: 'misto', mode, period: lastMonthPeriod() });
+  const r = await api('POST', '/api/decisions', { question, product_ids: products.filter((p) => p.in_scope).map((p) => p.id), decision_type: 'misto', mode, period: lastMonthPeriod() });
   voice.speak('Entendido. Reunindo os especialistas.');
   location.hash = `#/decisao/${r.decision_id}`;
 }
@@ -848,7 +848,7 @@ function bindRows(el) { $$('tr[data-href]', el).forEach((tr) => { tr.onclick = (
 // ---------------- Conversa por voz com o núcleo (mãos livres) ----------------
 // Usa POST /api/conversation: respostas curtas faladas; análise só abre depois do "sim"; nunca aprova nem executa.
 // Relatórios das bases abrem direto no painel ("relatório do ORBI").
-const SYS_VOICE = [['ORBI', /orbi|orbe/], ['TORVEN', /torven|torvem/], ['RUSTEN', /rusten|rustem/], ['APOLVEN', /apolven|apolvem/], ['MASTER', /master|mestre/], ['INSTAGRAM', /instagram/], ['WHATSAPP', /whats ?app|zap/]];
+const SYS_VOICE = [['ORBI', /orbi|orbe/], ['TORVEN', /torven|torvem/], ['RUSTEN', /rusten|rustem/], ['APOLVEN', /apolven|apolvem/], ['ANIBI', /anibi|anib/], ['CIFREN', /cifren|cifrem/], ['MASTER', /master|mestre/], ['INSTAGRAM', /instagram/], ['WHATSAPP', /whats ?app|zap/]];
 const norm = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const convo = { on: false, history: [], pending: null, ch: null };
 function voiceCommand(ch) {
@@ -924,7 +924,7 @@ async function viewNew(c) {
     <form id="nf" class="grid g2">
       <label class="field span2">Pergunta ou objetivo
         <div class="command"><textarea name="question" required minlength="8" maxlength="2000" placeholder="Ex.: Podemos oferecer 10% de desconto no ORBI para aumentar a conversão?"></textarea><button type="button" class="btn icon" id="mic">${svg('mic')}</button></div></label>
-      <div class="field span2">Produtos envolvidos<div class="chips">${products.map((p) => `<label class="chip ${p.in_scope && p.code !== 'APOLVEN' ? 'on' : ''}"><input type="checkbox" name="p" value="${p.id}" ${p.in_scope && p.code !== 'APOLVEN' ? 'checked' : ''} ${p.in_scope ? '' : 'disabled'}>${esc(p.code)}${p.in_scope ? '' : ' (sem escopo)'}</label>`).join('')}</div></div>
+      <div class="field span2">Produtos envolvidos<div class="chips">${products.map((p) => `<label class="chip ${p.in_scope ? 'on' : ''}"><input type="checkbox" name="p" value="${p.id}" ${p.in_scope ? 'checked' : ''} ${p.in_scope ? '' : 'disabled'}>${esc(p.code)}${p.in_scope ? '' : ' (sem escopo)'}</label>`).join('')}</div></div>
       <label class="field">Início do período<input type="date" name="start" value="${d(start)}" required></label>
       <label class="field">Fim (exclusivo)<input type="date" name="end" value="${d(end)}" required></label>
       <label class="field">Tipo de decisão<select name="type"><option value="misto">Misto</option><option value="comercial">Comercial</option><option value="financeiro">Financeiro</option><option value="operacional">Operacional</option></select></label>
