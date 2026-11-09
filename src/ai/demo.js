@@ -244,6 +244,8 @@ const PITCH = {
   TORVEN: { segment: 'oficinas, serralherias e assistências técnicas', line: 'Ordens de serviço, orçamentos e histórico de reparos da sua oficina organizados do primeiro contato à entrega.', tags: ['serralheria', 'soldagem', 'assistenciatecnica', 'ordemdeservico', 'oficina'] },
   RUSTEN: { segment: 'bares e restaurantes', line: 'Pedidos, comandas e caixa do seu bar ou restaurante na palma da mão — menos fila, mais giro de mesa.', tags: ['restaurante', 'bar', 'gestaoderestaurante', 'pdv', 'foodservice'] },
   APOLVEN: { segment: 'pequenos negócios', line: 'Gestão simples para o dia a dia do seu negócio.', tags: ['gestao', 'pequenasempresas', 'empreendedorismo'] },
+  ANIBI: { segment: 'pet shops e clínicas veterinárias', line: 'Agenda de banho e tosa, prontuário veterinário e caixa do pet shop num só sistema.', tags: ['petshop', 'banhoetosa', 'clinicaveterinaria', 'veterinario', 'pets'] },
+  CIFREN: { segment: 'pequenas e médias empresas', line: 'Contas a pagar e receber, conciliação bancária e DRE sem planilha.', tags: ['gestaofinanceira', 'fluxodecaixa', 'financas', 'empreendedorismo', 'dre'] },
 };
 function mkProduct(input, ix) {
   const q = (input.task.decision_question || '').toUpperCase();

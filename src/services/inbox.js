@@ -3,7 +3,7 @@
 // Formato do arquivo:
 //   ---
 //   titulo: Radar diário de tendências
-//   produto: GERAL            (GERAL ou código do produto: ORBI, RUSTEN, TORVEN, APOLVEN)
+//   produto: GERAL            (GERAL ou código do produto: ORBI, RUSTEN, TORVEN, APOLVEN, ANIBI, CIFREN)
 //   classificacao: internal   (public | internal | restricted)
 //   validade_dias: 30
 //   ---

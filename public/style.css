@@ -777,3 +777,5 @@ tr.click:hover td { background: #0e1e3d; }
   .dcard .facts { grid-template-columns: 1fr 1fr; }
 }
 .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)) !important; }
+#an-systems { grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)) !important; }
+.brain3d.neural .core-sources { gap: 6px; } .brain3d.neural .core-sources .core-chip { padding: 5px 10px; }

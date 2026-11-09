@@ -1,4 +1,4 @@
-// Centro de Análise — consolida as bases dos sistemas (ORBI, TORVEN, RUSTEN, APOLVEN) a partir da Área Master.
+// Centro de Análise — consolida as bases dos sistemas (ORBI, TORVEN, RUSTEN, APOLVEN, ANIBI, CIFREN) a partir da Área Master.
 // Somente leitura. Sem Área Master configurada (ou com falha), devolve dados de demonstração claramente sinalizados.
 import * as master from '../connectors/master.js';
 import { demoMetrics } from '../connectors/demo.js';
@@ -86,7 +86,7 @@ function fromDemo(code, days) {
   const dm = demoMetrics(code, null);
   const get = (c) => n(dm?.metrics.find((m) => m.code === c)?.value);
   const active = get('active_subscriptions_at_period_end') || 0;
-  const price = { ORBI: 99, TORVEN: 129, RUSTEN: 149, APOLVEN: 79 }[code] || 99;
+  const price = { ORBI: 99, TORVEN: 129, RUSTEN: 149, APOLVEN: 79, ANIBI: 119, CIFREN: 89 }[code] || 99;
   const rnd = seeded([...code].reduce((a, ch) => a + ch.charCodeAt(0) * 31, 7));
   const newSubs = get('new_subscriptions') || 0; const canc = get('cancellations') || 0;
   const spread = (total) => { const w = days.map(() => rnd() ** 2); const sum = w.reduce((a, b) => a + b, 0) || 1; const raw = w.map((x) => Math.floor((x / sum) * total)); let rest = total - raw.reduce((a, b) => a + b, 0); for (let i = 0; rest > 0; i = (i + 7) % raw.length, rest--) raw[i]++; return raw; };

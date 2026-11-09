@@ -15,8 +15,9 @@ import { buildAnalytics } from './analytics.js';
 import { getProvider, modelFor } from '../ai/provider.js';
 import { validateAgainst } from '../ai/schemas.js';
 import { getSettings, personaInstructions } from './assistant.js';
+import { SYSTEM_CODES } from '../seed.js';
 
-const SYSTEMS = ['ORBI', 'TORVEN', 'RUSTEN', 'APOLVEN'];
+const SYSTEMS = SYSTEM_CODES;
 const PAGES = {
   nucleo: ['visão geral', 'visao geral', 'núcleo', 'nucleo', 'início', 'inicio', 'painel'],
   nova: ['nova análise', 'nova analise'],
@@ -54,7 +55,7 @@ export const CONVERSATION_SCHEMA = {
   },
 };
 
-const RULES = `Você é o assistente da central de decisões da LORLER, a empresa do usuário (sistemas ORBI, TORVEN, RUSTEN e APOLVEN).
+const RULES = `Você é o assistente da central de decisões da LORLER, a empresa do usuário (sistemas ORBI, TORVEN, RUSTEN, APOLVEN, ANIBI e CIFREN).
 Responda em português do Brasil.
 Use apenas os dados do campo "contexto"; se o dado não estiver lá, diga que não tem esse dado e sugira abrir uma análise.
 Se existir "dados_prontos", eles são a resposta factual correta: reescreva com naturalidade sem mudar nenhum número.
