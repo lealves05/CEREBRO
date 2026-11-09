@@ -1,0 +1,13 @@
+{
+ "formato": "4x5",
+ "cor": "#0a9893",
+ "marca": "R2L2 ENGETECH",
+ "marca_sub": "ENGENHARIA",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "A internet caiu das 2h às 5h", "l2": "e o registro da câmara?", "sub": "Telemetria e IoT", "dur": 3.4},
+  {"tipo": "lista", "titulo": "Para o dado sobreviver", "itens": ["Buffer local no gateway", "Hora carimbada na origem, com NTP", "MQTT com QoS 1 e sessão persistente"], "dur": 5.5},
+  {"tipo": "texto", "titulo": "Teste antes da auditoria", "corpo": "Tire o cabo de rede por uma hora.\nO histórico tem que voltar completo e na ordem certa.", "dur": 4.8},
+  {"tipo": "cta", "l1": "Dado que vira evidência", "l2": "r2l2engetech", "sub": "IoT para ambientes críticos", "logo": false, "dur": 3.5}
+ ]
+}

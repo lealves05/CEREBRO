@@ -1,0 +1,15 @@
+{
+ "formato": "9x16",
+ "cor": "#f7920f",
+ "marca": "LORLER",
+ "marca_sub": "SISTEMAS DE GESTÃO",
+ "pill": "lorler.com.br",
+ "musica": true,
+ "cenas": [
+  {"tipo": "gancho", "l1": "Disparo em massa", "l2": "pode derrubar seu número", "sub": "WhatsApp e Black Friday", "dur": 3},
+  {"tipo": "texto", "titulo": "O risco", "corpo": "O bloqueio costuma atingir quem usa app não oficial de envio em massa.\nCom o número, vai o histórico de clientes.\nFonte: Diário da Manhã, 03/11", "dur": 5.5},
+  {"tipo": "lista", "titulo": "O caminho oficial", "itens": ["API do WhatsApp Business", "Modelo de mensagem aprovado antes", "Cliente que autorizou o contato"], "dur": 5},
+  {"tipo": "lista", "titulo": "Antes do dia 27", "itens": ["Confira quem aceitou receber aviso", "Mande só para quem pediu", "Guarde o registro do aceite"], "dur": 4.5},
+  {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "Sistemas de gestão para pequenos negócios", "logo": true, "dur": 3.5}
+ ]
+}
