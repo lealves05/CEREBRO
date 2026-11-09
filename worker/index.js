@@ -12,11 +12,13 @@ import m002 from '../migrations/002_marketing_instagram.sql';
 import m003 from '../migrations/003_whatsapp.sql';
 import m004 from '../migrations/004_conversation.sql';
 import m005 from '../migrations/005_assistant.sql';
+import m006 from '../migrations/006_briefing.sql';
 import pricing from '../config/pricing.json';
 
 const MIGRATIONS = [
   { name: '001_init.sql', sql: m001 }, { name: '002_marketing_instagram.sql', sql: m002 },
   { name: '003_whatsapp.sql', sql: m003 }, { name: '004_conversation.sql', sql: m004 }, { name: '005_assistant.sql', sql: m005 },
+  { name: '006_briefing.sql', sql: m006 },
 ];
 const HEARTBEAT_MS = 2 * 60_000;
 

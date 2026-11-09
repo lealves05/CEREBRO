@@ -1,4 +1,4 @@
-import { createBrain } from './brain.js?v=20261007a';
+import { createBrain } from './neural.js?v=20261109a';
 import { createAvatar } from './avatar.js?v=20261011a';
 import { sparkline, ring, animateRings, radar, statusBar, flowChart, countUp, sysColor, projectionChart } from './hud.js?v=20261007a';
 // LORLER · Central de Decisões — painel HUD (SPA sem dependências)
@@ -63,6 +63,12 @@ const ICONS = {
   face: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/>',
   chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  command: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  scale: '<path d="M12 3v18M5 8l7-5 7 5M5 8l-2 6h4zM19 8l-2 6h4z"/>',
+  radar: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12l6-6"/>',
+  whatsapp: '<path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9 9.5c.3 2 2 3.8 4.5 4.5l1-1.2 2 .8"/>',
+  spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+  brainmark: '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/>',
 };
 const svg = (name, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 const reactor = (size, cls = '') => `<div class="reactor ${cls}" style="--size:${size}"><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="ring r4"></div><div class="core"></div></div>`;
@@ -212,8 +218,9 @@ async function init() {
 
 function loginLayout(inner) {
   $('#app').innerHTML = `<div class="login-wrap">
-    <div class="login-hero">${reactor('min(52vw, 320px)', 'busy')}<div><h1>LORLER</h1><p>Central de Decisões · Cérebro Multiagente</p></div></div>
-    <div class="panel login-card scanline">${inner}</div></div>`;
+    <div class="login-hero"><div id="login-brain"></div><div><h1>CÉREBRO</h1><p>LORLER · Central de Decisões</p></div></div>
+    <div class="panel login-card">${inner}</div></div>`;
+  try { const b = createBrain($('#login-brain'), { compact: true }); b.setStatus('', true); state.loginBrain?.destroy(); state.loginBrain = b; } catch { /* visual opcional */ }
 }
 
 function bootLines(el, lines) {
@@ -263,17 +270,18 @@ function renderSetup() {
 
 // ---------------- Shell ----------------
 const NAV = [
-  ['nucleo', 'Visão geral', 'core'], ['nova', 'Nova análise', 'plus'], ['decisoes', 'Decisões', 'list'], ['aprovacoes', 'Aprovações', 'shield'],
-  ['agentes', 'Agentes', 'agents'], ['conhecimento', 'Conhecimento', 'book'], ['integracoes', 'Integrações', 'plug'], ['regras', 'Regras e limites', 'rules'],
-  ['auditoria', 'Histórico e auditoria', 'audit'], ['assistente', 'Assistente', 'face'], ['admin', 'Administração', 'admin'],
+  ['g', 'Decidir'], ['nucleo', 'Comando', 'command'], ['decisoes', 'Sala de Decisão', 'scale'], ['aprovacoes', 'Aprovações', 'shield'], ['radar', 'Radar dos sistemas', 'radar'], ['whatsapp', 'WhatsApp', 'whatsapp'],
+  ['g', 'Cérebro'], ['nova', 'Nova análise', 'plus'], ['agentes', 'Agentes', 'agents'], ['conhecimento', 'Conhecimento', 'book'], ['assistente', 'Assistente', 'face'],
+  ['g', 'Configuração'], ['integracoes', 'Integrações', 'plug'], ['regras', 'Regras e limites', 'rules'], ['auditoria', 'Histórico e auditoria', 'audit'], ['admin', 'Administração', 'admin'],
 ];
 
 function renderShell() {
+  state.loginBrain?.destroy(); state.loginBrain = null;
   const me = state.me;
   $('#app').innerHTML = `<div class="shell">
     <aside class="sidebar" id="sb">
-      <div class="brand">${reactor('40px', 'mini')}<div><b>LORLER</b><small>Central de Decisões</small></div></div>
-      <nav class="nav">${NAV.map(([k, l, i]) => `<a href="#/${k}" data-k="${k}">${svg(i, 'ico')}<span>${l}</span>${k === 'aprovacoes' ? '<span class="badge warn hidden" id="nav-pending"></span>' : ''}</a>`).join('')}</nav>
+      <div class="brand"><span class="brand-mark">${svg('brainmark')}</span><div><b>CÉREBRO</b><small>LORLER</small></div></div>
+      <nav class="nav" aria-label="Menu principal">${NAV.map(([k, l, i]) => (k === 'g' ? `<div class="nav-group">${l}</div>` : `<a href="#/${k}" data-k="${k}">${svg(i, 'ico')}<span>${l}</span>${k === 'aprovacoes' ? '<span class="badge warn hidden" id="nav-pending"></span>' : ''}</a>`)).join('')}</nav>
       <div class="foot"><div>${esc(me.user.name)}</div><div class="small">${esc(me.organization.name)} · <span class="badge">${esc(me.role)}</span></div>
         <button class="btn sm ghost" id="logout" style="margin-top:10px">${svg('logout')}Sair</button></div>
     </aside>
@@ -323,8 +331,8 @@ function route() {
   state.query = new URLSearchParams(hashQuery);
   const [, key = 'nucleo', arg] = hashPath.split('/');
   $$('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.k === key || (key === 'decisao' && a.dataset.k === 'decisoes')));
-  const views = { nucleo: viewCore, nova: viewNew, decisoes: viewDecisions, decisao: viewDecision, aprovacoes: viewApprovals, agentes: viewAgents, conhecimento: viewKnowledge, integracoes: viewIntegrations, regras: viewRules, auditoria: viewAudit, assistente: viewAssistant, admin: viewAdmin };
-  const titles = { decisao: 'Decisão' };
+  const views = { nucleo: viewCore, radar: viewRadar, whatsapp: viewWhatsApp, nova: viewNew, decisoes: viewDecisions, decisao: viewDecision, aprovacoes: viewApprovals, agentes: viewAgents, conhecimento: viewKnowledge, integracoes: viewIntegrations, regras: viewRules, auditoria: viewAudit, assistente: viewAssistant, admin: viewAdmin };
+  const titles = { decisao: 'Sala de Decisão' };
   $('#vtitle').textContent = titles[key] || NAV.find((n) => n[0] === key)?.[1] || '';
   const c = $('#content');
   c.innerHTML = '<div class="empty"><b>Carregando</b>Consultando o núcleo…</div>';
@@ -340,8 +348,8 @@ function createChamber(el, { label = 'Aguardando comando' } = {}) {
   el.classList.add('chamber');
   el.innerHTML = `<svg class="links" viewBox="0 0 100 62.5" preserveAspectRatio="none">
       <defs><filter id="glow"><feGaussianBlur stdDeviation=".6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-      ${SPECIALISTS.map((a) => `<line data-l="${a}" x1="50" y1="31.25" x2="${P(a)[0]}" y2="${P(a)[1]}" stroke="rgba(25,227,255,.25)" stroke-width=".25" stroke-dasharray="1 1"/>`).join('')}
-      ${ring.map((a, i) => { const b = ring[(i + 1) % ring.length]; return `<line x1="${P(a)[0]}" y1="${P(a)[1]}" x2="${P(b)[0]}" y2="${P(b)[1]}" stroke="rgba(25,227,255,.1)" stroke-width=".2"/>`; }).join('')}
+      ${SPECIALISTS.map((a) => `<line data-l="${a}" x1="50" y1="31.25" x2="${P(a)[0]}" y2="${P(a)[1]}" stroke="rgba(45,212,191,.25)" stroke-width=".25" stroke-dasharray="1 1"/>`).join('')}
+      ${ring.map((a, i) => { const b = ring[(i + 1) % ring.length]; return `<line x1="${P(a)[0]}" y1="${P(a)[1]}" x2="${P(b)[0]}" y2="${P(b)[1]}" stroke="rgba(45,212,191,.1)" stroke-width=".2"/>`; }).join('')}
       <g id="pulses" filter="url(#glow)"></g></svg>
     <div class="center">${reactor('min(30vw, 190px)')}</div>
     <div class="status-ring" id="ch-status">${esc(label)}</div>
@@ -349,7 +357,7 @@ function createChamber(el, { label = 'Aguardando comando' } = {}) {
   const svgEl = $('svg.links', el);
   const g = $('#pulses', el);
   const point = (a) => (!pos[a] || a === 'coordinator' ? [50, 31.25] : P(a));
-  const colors = { coordinator: '#19e3ff', financial: '#3dffa8', commercial: '#ffb547', operations: '#9d8cff', marketing: '#ff5fa2', approver: '#ffffff' };
+  const colors = { coordinator: '#2dd4bf', financial: '#4ade80', commercial: '#ff8a3d', operations: '#7aa2ff', marketing: '#c4a8ff', approver: '#ffffff' };
   let raf = null; const pulses = [];
   const loop = (t) => {
     for (let i = pulses.length - 1; i >= 0; i--) {
@@ -370,12 +378,12 @@ function createChamber(el, { label = 'Aguardando comando' } = {}) {
       if (stateName) n.classList.add(stateName);
       $('small', n).textContent = note;
       const line = $(`line[data-l="${a}"]`, svgEl);
-      if (line) line.setAttribute('stroke', stateName === 'thinking' ? colors[a] : 'rgba(25,227,255,.25)');
+      if (line) line.setAttribute('stroke', stateName === 'thinking' ? colors[a] : 'rgba(45,212,191,.25)');
     },
     activate(list) { list.forEach((a) => { const n = $(`.node[data-a="${a}"]`, el); n?.classList.remove('idle'); }); },
     pulse(from, to, type) {
       const NS = 'http://www.w3.org/2000/svg';
-      const col = colors[from] || '#19e3ff';
+      const col = colors[from] || '#2dd4bf';
       if (to === 'all') {
         const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', 50); c.setAttribute('cy', 31.25); c.setAttribute('fill', 'none'); c.setAttribute('stroke', col); c.setAttribute('stroke-width', '.4');
         g.appendChild(c); pulses.push({ el: c, ring: true, t0: performance.now(), dur: 1400 });
@@ -399,51 +407,236 @@ function msgHtml(m) {
   return `<div class="msg c-${esc(from)}"><div class="meta"><b>${esc(AGENTS[from]?.short || from)}</b> → ${esc(AGENTS[to]?.short || to)} · ${esc(MSG_TYPES[type] || type)}${m.round != null && m.round < 9 ? ` · rodada ${m.round}` : ''}${m.created_at ? ` · ${fmtDate(m.created_at)}` : ''}</div><p>${esc(text)}</p></div>`;
 }
 
-// ---------------- Visão geral (núcleo) ----------------
+// ---------------- Comando (tela inicial) ----------------
+const LEVEL_COLOR = { danger: '#ff7a7a', warn: '#ff8a3d', good: '#4ade80', info: '#2dd4bf' };
+const EVENT_COLOR = { signup: '#2dd4bf', payment: '#4ade80', subscription: '#4ade80', cancel: '#ff7a7a', overdue: '#ff8a3d' };
+const money0 = (v) => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }));
+const greet = () => { const h = Number(new Date().toLocaleString('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: state.me?.organization?.timezone || 'America/Sao_Paulo' })); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
+
+function lastMonthPeriod() {
+  const end = new Date(); end.setDate(1); end.setHours(0, 0, 0, 0);
+  const start = new Date(end); start.setMonth(start.getMonth() - 1);
+  return { start: start.toISOString(), end_exclusive: end.toISOString() };
+}
+async function askBrain(question, products, mode = 'real') {
+  const r = await api('POST', '/api/decisions', { question, product_ids: products.filter((p) => p.in_scope && p.code !== 'APOLVEN').map((p) => p.id), decision_type: 'misto', mode, period: lastMonthPeriod() });
+  voice.speak('Entendido. Reunindo os especialistas.');
+  location.hash = `#/decisao/${r.decision_id}`;
+}
+
+function pendingCard(p) {
+  const exp = p.expires_at ? Date.parse(p.expires_at) - Date.now() : null;
+  const left = exp == null ? 'sem prazo' : exp <= 0 ? 'vencida' : exp < 3600_000 ? `${Math.max(1, Math.round(exp / 60000))} min` : exp < 86400_000 ? `${Math.round(exp / 3600_000)} h` : `${Math.round(exp / 86400_000)} dias`;
+  return `<article class="dcard">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:nowrap">
+      <div><span class="meta">${p.is_demo ? '<span class="badge demo">DEMO</span> ' : ''}${esc(relTime(p.created_at))}${p.product ? ` · ${esc(p.product)}` : ''}</span><h3>${esc(p.summary)}</h3></div>
+      ${st(p.status)}</div>
+    <div class="facts"><div><span>Ação</span><b>${esc(TOOLS[p.tool_code] || p.tool_code)}</b></div><div><span>Prazo para decidir</span><b>${esc(left)}</b></div><div><span>Pergunta de origem</span><small class="muted">${esc((p.question || '').slice(0, 90))}</small></div></div>
+    <div class="row"><a class="btn primary" href="#/decisao/${p.decision_id}?tab=aprovacao">Revisar e aprovar</a><a class="btn ghost" href="#/decisao/${p.decision_id}">Ver debate dos agentes →</a></div>
+  </article>`;
+}
+
 async function viewCore(c) {
-  const [ov, products] = await Promise.all([api('GET', '/api/overview'), api('GET', '/api/products')]);
+  const [ov, products, approvals] = await Promise.all([api('GET', '/api/overview'), api('GET', '/api/products'), api('GET', '/api/approvals').catch(() => [])]);
   const me = state.me;
   const canCreate = me.permissions.includes('create_decision');
   const hasConnected = ov.products.some((p) => p.integration_status === 'connected');
-  const h = new Date().getHours();
+  const pend = approvals.filter((x) => x.status === 'awaiting_approval');
+  const name = state.assistant?.settings?.call_me || me.user.name.split(' ')[0];
+  const when = new Date().toLocaleString('pt-BR', { timeZone: me.organization.timezone, weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   c.innerHTML = `
-    <div class="hud-bar">
-      <div class="hb-title"><span class="hb-pulse"></span>Centro de Análise LORLER</div>
-      <div id="an-source" class="hb-src">Conectando às bases…</div>
-      <div class="hb-meta mono"><span id="an-time">—</span><span class="sep">|</span>próxima leitura <b id="an-next">60</b>s</div>
-      <button class="btn sm ghost" id="an-refresh" title="Atualizar agora">${svg('refresh')} Atualizar</button>
+    <div class="cmd-head"><div><span class="kicker">${esc(when)}</span>
+      <h1>${greet()}, ${esc(name)}. ${pend.length ? `${pend.length} ${pend.length === 1 ? 'decisão espera' : 'decisões esperam'} por você.` : 'Nenhuma decisão pendente.'}</h1></div>
+      <div class="row"><span class="pill"><span class="dot"></span>5 agentes online</span>${me.ai_provider === 'demo' ? '<span class="pill warn">IA de demonstração</span>' : ''}<span class="pill" id="src-pill">Lendo as bases…</span></div></div>
+    ${canCreate ? `<form class="cmdbar" id="cmd" role="search">${svg('spark')}<label for="cmd-q" class="sr-only">Pergunte ou peça uma decisão ao Cérebro</label>
+      <input id="cmd-q" name="q" placeholder="Pergunte ou peça uma decisão… ex.: vale reajustar o ORBI Pro?" autocomplete="off" required minlength="8">
+      <button type="button" class="btn icon" id="mic" aria-label="Falar por voz">${svg('mic')}</button><button class="btn primary">Analisar</button></form>
+      <div class="cmd-mode"><span>Dados:</span>
+        <label class="chip ${!hasConnected && me.demo_mode ? 'on' : ''}"><input type="radio" name="mode" value="demo" ${!hasConnected && me.demo_mode ? 'checked' : ''} ${me.demo_mode ? '' : 'disabled'}>Demonstração</label>
+        <label class="chip ${hasConnected || !me.demo_mode ? 'on' : ''}"><input type="radio" name="mode" value="real" ${hasConnected || !me.demo_mode ? 'checked' : ''}>Dados reais (Área Master)</label>
+        <span>· mês anterior · <a href="#/nova">opções avançadas</a></span></div>
+      <div class="chips">${['Como fecha o caixa nos próximos 30 dias?', 'Qual sistema tem maior risco de cancelamento e o que fazer?', 'Devemos ampliar o teste grátis do ORBI na Área Master?', 'O suporte aguenta o crescimento de clientes?', 'Crie um post para o Instagram divulgando o ORBI'].map((t) => `<button type="button" class="chip suggest" data-q="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : '<p class="muted">Seu papel permite consultar relatórios.</p>'}
+    <section class="kpi-ribbon" id="kr" aria-label="Indicadores">${Array.from({ length: 6 }, () => '<div class="kr skeleton"></div>').join('')}</section>
+    <div class="cmd-grid">
+      <section class="panel brief" aria-label="Briefing do dia">
+        <div class="brief-top"><div class="orb" id="orb"></div><div><span class="k">Briefing do dia</span><h2 id="brief-h">Lendo os sistemas…</h2></div></div>
+        <ol id="brief-l"></ol>
+        <a href="#/whatsapp" class="small">Receber este briefing no WhatsApp todo dia →</a>
+      </section>
+      <section aria-label="Decisões pendentes">
+        <div class="sec-h"><h2>Decisões pendentes</h2><a href="#/aprovacoes">Ver todas</a></div>
+        <div class="grid" id="pend">${pend.length ? pend.slice(0, 4).map(pendingCard).join('') : '<div class="panel empty"><b>Nada esperando você</b>Quando os agentes propuserem uma ação, ela aparece aqui para aprovar com um clique (ou pelo WhatsApp com PIN).</div>'}</div>
+      </section>
     </div>
+    <section class="panel"><div class="sec-h"><h2>Sinais em tempo real</h2><a href="#/radar">Abrir radar</a></div><div class="signals" id="sig"><p class="muted">Aguardando as bases…</p></div></section>
+    <section class="panel"><div class="sec-h"><h2>Análises recentes</h2><a href="#/decisoes">Sala de Decisão</a></div><div id="ov-recent">${decisionsTable(ov.recent)}</div></section>`;
+  bindChips(c); bindRows(c);
+  const orb = createBrain($('#orb', c), { compact: true });
+  state.cleanup.push(() => orb.destroy());
+
+  // indicadores + sinais (bases dos sistemas)
+  const signals = [];
+  const drawSignals = () => { const el = $('#sig', c); if (el) el.innerHTML = signals.length ? signals.slice(0, 8).map((x) => `<div class="sig" style="--c:${x.color}"><i></i><div><small>${esc(x.sys)} · ${esc(x.when)}</small><span>${esc(x.text)}</span></div></div>`).join('') : '<p class="muted">Sem movimentos recentes.</p>'; };
+  api('GET', '/api/analytics').then((a) => {
+    const t = a.totals;
+    const pill = $('#src-pill', c); if (pill) { pill.textContent = a.source === 'master' ? 'Área Master · ao vivo' : a.source === 'demo' ? 'Dados de demonstração' : a.source === 'mixed' ? 'Fontes mistas' : 'Sem dados'; pill.classList.toggle('warn', a.source !== 'master'); }
+    const pct = (x, y) => (y ? `${((x / y) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '—');
+    const tiles = [
+      { l: 'Receita recorrente', v: money0(t.mrr), s: `${fmtNum(t.tenants)} empresas`, k: '#5eead4', sp: a.series.cash },
+      { l: 'Assinaturas ativas', v: fmtNum(t.active), s: `+${fmtNum(t.new_subscriptions)} em 30 dias`, k: '#5eead4', sp: a.series.signups },
+      { l: 'Recebido · 30 dias', v: money0(t.cash), s: 'pagamentos confirmados', k: '#4ade80', sp: a.series.cash },
+      { l: 'Em aberto', v: money0(t.open_receivables), s: `${fmtNum(t.past_due)} atrasadas`, k: t.past_due ? '#ffb27d' : '#8da2c8' },
+      { l: 'Cancelamentos · 30d', v: fmtNum(t.cancellations), s: `${pct(t.cancellations, t.active)} das ativas`, k: t.cancellations ? '#ffb27d' : '#8da2c8', sp: a.series.cancellations, spc: '#ff8a3d' },
+      { l: 'Em teste', v: fmtNum(t.trial), s: t.conversion_pct != null ? `conversão ${t.conversion_pct.toLocaleString('pt-BR')}%` : 'conversão —', k: '#8da2c8' },
+    ];
+    const kr = $('#kr', c); if (kr) kr.innerHTML = tiles.map((x) => `<div class="kr" style="--k:${x.k}"><span class="l">${esc(x.l)}</span><span class="v">${esc(x.v)}</span><span class="s">${esc(x.s)}</span>${x.sp ? sparkline(x.sp, x.spc || '#2dd4bf', { w: 180, h: 26 }) : ''}</div>`).join('');
+    for (const p of a.products) for (const e of (p.recent || []).slice(0, 4)) signals.push({ sys: p.code, at: Date.parse(e.at), when: relTime(e.at), text: e.text, color: EVENT_COLOR[e.type] || '#8da2c8' });
+    signals.sort((x, y) => y.at - x.at); drawSignals();
+  }).catch((e) => { const kr = $('#kr', c); if (kr) kr.innerHTML = `<div class="alert warn">${esc(e.message)}</div>`; });
+  api('GET', '/api/briefing').then((b) => {
+    const h = $('#brief-h', c); if (h) h.textContent = b.headline;
+    const l = $('#brief-l', c); if (l) l.innerHTML = b.items.map((x, i) => `<li style="--c:${LEVEL_COLOR[x.level] || '#2dd4bf'}"><span class="n">${String(i + 1).padStart(2, '0')}</span><div><b>${esc(x.title)}</b><span>${esc(x.text)}</span></div></li>`).join('') || '<li><div><b>Sem itens</b><span>Ligue a Área Master para o briefing ler os números reais.</span></div></li>';
+  }).catch(() => { const h = $('#brief-h', c); if (h) h.textContent = 'Não foi possível montar o briefing agora.'; });
+  // atividade dos agentes ao vivo
+  const live = new EventSource('/api/events');
+  live.onmessage = (ev) => {
+    const e = JSON.parse(ev.data);
+    if (e.type === 'message') { orb.pulse(e.from, e.to, e.msgType); signals.unshift({ sys: AGENTS[e.from]?.short || e.from, at: Date.now(), when: 'agora', text: `${MSG_TYPES[e.msgType] || e.msgType} para ${AGENTS[e.to]?.short || e.to}`, color: `var(--agent-${e.from})` }); drawSignals(); }
+    else if (e.type === 'agent') orb.agent(e.agent, e.state === 'thinking' ? 'thinking' : '', '');
+    else if (e.type === 'status') orb.setStatus('', ACTIVE.includes(e.status));
+  };
+  state.cleanup.push(() => live.close());
+
+  const form = $('#cmd', c);
+  if (form) {
+    if (state.prefill) { form.q.value = state.prefill; state.prefill = null; form.q.focus(); }
+    $$('.suggest', c).forEach((b) => { b.onclick = () => { form.q.value = b.dataset.q; form.q.focus(); }; });
+    $('#mic', c).onclick = (e) => voice.listen((t, final) => { form.q.value = t; if (final && t.length >= 8) form.requestSubmit(); }, e.currentTarget);
+    form.onsubmit = async (e) => { e.preventDefault(); try { await askBrain(form.q.value, products, $('input[name=mode]:checked', c)?.value || 'real'); } catch (err) { fail(err); } };
+  }
+}
+
+// ---------------- Simulador de cenário (Sala de Decisão) ----------------
+// Projeção de 12 meses sobre a base atual de um sistema: reajuste de preço × cancelamentos extras × clientes novos.
+// Conta simples e transparente (não é parecer da IA); o botão manda o cenário para os agentes analisarem.
+async function mountSimulator(el, { products = null } = {}) {
+  el.innerHTML = '<h2>Simule o cenário</h2><p class="muted">Lendo a base dos sistemas…</p>';
+  let a;
+  try { a = await api('GET', '/api/analytics'); } catch (e) { el.innerHTML = `<h2>Simule o cenário</h2><div class="alert warn">${esc(e.message)}</div>`; return; }
+  const ps = a.products.filter((p) => p.kpis && p.kpis.active).sort((x, y) => y.kpis.active - x.kpis.active);
+  if (!ps.length) { el.innerHTML = '<h2>Simule o cenário</h2><p class="muted">Sem base de assinaturas para simular. Ligue a Área Master.</p>'; return; }
+  const s = { code: ps[0].code, r: 10, c: 4, n: null };
+  const canAsk = products && state.me.permissions.includes('create_decision');
+  el.innerHTML = `<div class="sec-h"><h2>Simule o cenário</h2><span class="small muted">${a.source === 'demo' ? 'base de demonstração' : 'base real'}</span></div>
+    <label class="field">Sistema<select id="sm-p">${ps.map((p) => `<option value="${esc(p.code)}">${esc(p.code)} · ${fmtNum(p.kpis.active)} ativas</option>`).join('')}</select></label>
+    <div><div class="row2"><label for="sm-r">Reajuste de preço</label><b id="sm-rl"></b></div><input id="sm-r" type="range" min="-20" max="30" step="1"></div>
+    <div><div class="row2"><label for="sm-c">Clientes que cancelam pelo reajuste</label><b id="sm-cl" style="color:var(--amber)"></b></div><input id="sm-c" type="range" min="0" max="20" step="1"></div>
+    <div><div class="row2"><label for="sm-n">Clientes novos por mês</label><b id="sm-nl" style="color:#b7c6e4"></b></div><input id="sm-n" type="range" min="0" max="60" step="1"></div>
+    <div class="legend-dots"><span><i style="background:var(--cyan)"></i>Com a mudança</span><span><i style="background:#3b5587"></i>Sem a mudança</span></div>
+    <div class="sim-chart" id="sm-ch" role="img" aria-label="Receita mensal projetada para 12 meses"></div>
+    <div class="row small muted" style="justify-content:space-between"><span>mês 1</span><span>mês 6</span><span>mês 12</span></div>
+    <div class="sim-out"><div><span>Diferença em 12 meses</span><b id="sm-d"></b></div><div><span>Se paga em</span><b id="sm-b"></b></div><div><span>Receita no mês 12</span><b id="sm-m"></b></div></div>
+    <p class="small muted" style="margin:0" id="sm-note"></p>
+    ${canAsk ? '<button type="button" class="btn" id="sm-ask">Pedir aos agentes para analisar este cenário</button>' : ''}`;
+  el.classList.add('sim');
+  const calc = () => {
+    const p = ps.find((x) => x.code === s.code); const k = p.kpis;
+    const base = k.active; const price = (k.mrr || 0) / base || 0;
+    const churn = Math.min(0.3, (k.cancellations || 0) / Math.max(1, base));
+    if (s.n == null) s.n = k.new_subscriptions || 0;
+    let ca = base * (1 - s.c / 100), cb = base; const pa = price * (1 + s.r / 100);
+    const ra = [], rb = [];
+    for (let i = 0; i < 12; i++) { ca = ca * (1 - churn) + s.n; cb = cb * (1 - churn) + s.n; ra.push(ca * pa); rb.push(cb * price); }
+    const max = Math.max(...ra, ...rb, 1) * 1.05;
+    $('#sm-ch', el).innerHTML = ra.map((v, i) => `<div><i class="a" style="height:${(v / max * 100).toFixed(1)}%"></i><i class="b" style="height:${(rb[i] / max * 100).toFixed(1)}%"></i></div>`).join('');
+    const d = ra.reduce((x, y) => x + y, 0) - rb.reduce((x, y) => x + y, 0);
+    let acc = 0, be = d > 0 ? '—' : 'não se paga';
+    for (let i = 0; i < 12; i++) { acc += ra[i] - rb[i]; if (acc > 0) { be = `${i + 1}º mês`; break; } }
+    $('#sm-rl', el).textContent = `${s.r > 0 ? '+' : ''}${s.r}% · ${fmtMoney(pa)} por cliente`;
+    $('#sm-cl', el).textContent = `${s.c}% (${Math.round(base * s.c / 100)} clientes)`;
+    $('#sm-nl', el).textContent = `${s.n} por mês`;
+    const dd = $('#sm-d', el); dd.textContent = `${d >= 0 ? '+' : '−'}${fmtMoney(Math.abs(d))}`; dd.style.color = d >= 0 ? 'var(--cyan-soft)' : 'var(--red)';
+    $('#sm-b', el).textContent = be;
+    $('#sm-m', el).textContent = fmtMoney(ra[11]);
+    $('#sm-note', el).textContent = `Base: ${fmtNum(base)} ativas, ticket médio ${fmtMoney(price)}, cancelamento natural de ${(churn * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% ao mês (últimos 30 dias). Simulação aritmética, não é parecer da IA.`;
+    s.text = `Vale a pena ${s.r >= 0 ? 'reajustar' : 'reduzir'} o preço do ${s.code} em ${Math.abs(s.r)}%? No simulador, com ${s.c}% de cancelamentos pelo reajuste e ${s.n} clientes novos por mês, a diferença em 12 meses fica em ${d >= 0 ? '+' : '-'}${fmtMoney(Math.abs(d))}.`;
+  };
+  const sync = () => { $('#sm-r', el).value = s.r; $('#sm-c', el).value = s.c; $('#sm-n', el).value = s.n ?? 0; };
+  $('#sm-p', el).onchange = (e) => { s.code = e.target.value; s.n = null; calc(); sync(); };
+  $('#sm-r', el).oninput = (e) => { s.r = Number(e.target.value); calc(); };
+  $('#sm-c', el).oninput = (e) => { s.c = Number(e.target.value); calc(); };
+  $('#sm-n', el).oninput = (e) => { s.n = Number(e.target.value); calc(); };
+  calc(); sync();
+  $('#sm-ask', el)?.addEventListener('click', async () => { try { await askBrain(s.text, products); } catch (e) { fail(e); } });
+}
+
+// ---------------- WhatsApp: conversar e decidir pelo celular ----------------
+async function viewWhatsApp(c) {
+  const [w, chat] = await Promise.all([api('GET', '/api/whatsapp/me'), api('GET', '/api/whatsapp/chat').catch(() => ({ turns: [] }))]);
+  const l = w.link; const linked = l?.status === 'verified';
+  const s = state.assistant?.settings || {}; const canEdit = !!state.assistant?.can_edit;
+  const hhmm = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  c.innerHTML = `
+    <div class="cmd-head"><div><span class="kicker">Cérebro no seu bolso</span><h1>Converse com o Cérebro pelo WhatsApp</h1>
+      <p class="muted" style="margin:6px 0 0;max-width:640px">Pergunte em texto, receba o briefing do dia e aprove decisões com PIN. Só números vinculados aqui falam com o Cérebro.</p></div>
+      <span class="pill ${linked ? '' : 'warn'}"><span class="dot"></span>${linked ? `Vinculado · ${esc(l.number)}` : w.configured ? 'Número não vinculado' : 'WhatsApp não configurado no servidor'}</span></div>
+    <div class="wa-wrap">
+      <div class="wa-phone" aria-label="Sua conversa recente com o Cérebro">
+        <div class="hd"><span class="av"></span><div><b>${esc(s.name || 'Cérebro')} LORLER</b><small>${linked ? 'online' : 'aguardando vínculo'}</small></div></div>
+        <div class="bd" id="wa-bd">${chat.turns.length ? chat.turns.map((t) => `<div class="bub ${t.role === 'user' ? 'out' : 'in'}">${esc(t.text)}<small>${hhmm(t.at)}</small></div>`).join('')
+          : `<div class="bub in">Quando o número estiver vinculado, sua conversa com o Cérebro aparece aqui.<small>exemplo</small></div><div class="bub out">RESUMO<small>exemplo</small></div><div class="bub in">Envio o briefing do dia: receita, riscos e o que espera aprovação.<small>exemplo</small></div><div class="bub out">APROVAR K7Q2MX<small>exemplo</small></div><div class="bub in">Para confirmar, envie seu PIN (válido por 5 minutos).<small>exemplo</small></div>`}</div>
+        <div class="ft"><span>Mensagem</span></div>
+      </div>
+      <div class="grid">
+        <div class="panel wa-panel" id="wa-card"></div>
+        <div class="panel"><h2>O que o Cérebro faz no WhatsApp</h2>
+          <div class="toggle-row"><div><b>Briefing diário</b><small>Receita, riscos e decisões pendentes, todo dia no horário escolhido.</small>
+            <div class="row" style="margin-top:8px"><label class="small muted" for="bf-time">Horário</label><input id="bf-time" type="time" value="${esc(l?.briefing_time || '07:30')}" style="max-width:130px" ${linked ? '' : 'disabled'}><button type="button" class="btn sm" id="bf-now" ${linked ? '' : 'disabled'}>Enviar agora</button></div></div>
+            <label class="switch"><input type="checkbox" id="bf-on" ${l?.briefing ? 'checked' : ''} ${linked ? '' : 'disabled'} aria-label="Briefing diário"><span></span></label></div>
+          <div class="toggle-row"><div><b>Pedidos de aprovação</b><small>Os agentes mandam a proposta; você responde APROVAR (com PIN), REVISAR ou REJEITAR.</small></div>
+            <label class="switch"><input type="checkbox" id="nt-on" ${l?.notify ? 'checked' : ''} ${linked ? '' : 'disabled'} aria-label="Pedidos de aprovação"><span></span></label></div>
+          <div class="toggle-row"><div><b>Conversa livre com os agentes</b><small>Pergunte qualquer coisa sobre os sistemas como se falasse com alguém da equipe.${canEdit ? '' : ' (só quem administra os agentes muda isto)'}</small></div>
+            <label class="switch"><input type="checkbox" id="ch-on" ${s.whatsapp_chat ? 'checked' : ''} ${canEdit ? '' : 'disabled'} aria-label="Conversa livre"><span></span></label></div>
+          ${linked && !w.briefing_template_configured ? '<p class="small muted" style="margin:6px 0 0">A Meta só entrega texto livre se você falou com o número nas últimas 24 h. Para o briefing chegar sempre, crie um modelo de Utilidade com uma variável e informe em WHATSAPP_TEMPLATE_BRIEFING (veja docs/WHATSAPP.md).</p>' : ''}
+        </div>
+        <div class="panel"><h2>Comandos rápidos (ou escreva do seu jeito)</h2><div class="cmd-chips">${['RESUMO', 'RADAR', 'PENDENTES', 'VER código', 'APROVAR código', 'REVISAR código o que mudar', 'REJEITAR código motivo', 'CANCELAR', 'AJUDA'].map((x) => `<code>${x}</code>`).join('')}</div></div>
+      </div>
+    </div>`;
+  renderWaCard($('#wa-card', c));
+  const bd = $('#wa-bd', c); bd.scrollTop = bd.scrollHeight;
+  const saveBf = async (patch) => { try { await api('POST', '/api/whatsapp/briefing', patch); toast(patch.enabled === false ? 'Briefing diário desligado.' : `Briefing diário às ${$('#bf-time', c).value}.`); } catch (e) { fail(e); route(); } };
+  $('#bf-on', c).onchange = (e) => saveBf({ enabled: e.target.checked, time: $('#bf-time', c).value });
+  $('#bf-time', c).onchange = (e) => saveBf({ time: e.target.value });
+  $('#bf-now', c).onclick = async (e) => { e.target.disabled = true; try { await api('POST', '/api/whatsapp/briefing/send', {}); toast('Briefing enviado para o seu WhatsApp.'); } catch (err) { fail(err); } e.target.disabled = false; };
+  $('#nt-on', c).onchange = async (e) => { try { await api('POST', '/api/whatsapp/notify', { enabled: e.target.checked }); } catch (err) { fail(err); } };
+  $('#ch-on', c).onchange = async (e) => { try { const r = await api('PUT', '/api/assistant', { whatsapp_chat: e.target.checked }); if (state.assistant) state.assistant.settings = r.settings; toast(e.target.checked ? 'Conversa livre ligada.' : 'Conversa livre desligada: só comandos.'); } catch (err) { fail(err); } };
+}
+
+// ---------------- Radar dos sistemas (cérebro 3D + bases) ----------------
+async function viewRadar(c) {
+  const ov = await api('GET', '/api/overview');
+  c.innerHTML = `
+    <div class="cmd-head"><div><span class="kicker">Ecossistema LORLER · cérebro e bases ao vivo</span><h1>Radar dos sistemas</h1></div>
+      <div class="row"><span id="an-source" class="hb-src">Conectando às bases…</span><span class="pill mono small"><span id="an-time">—</span> · próxima leitura <b id="an-next">60</b>s</span>
+      <button class="btn sm ghost" id="an-refresh">${svg('refresh')} Atualizar</button></div></div>
+    <div id="chamber"></div>
+    <div class="radar-legend" aria-label="Legenda do cérebro">
+      <span><i style="background:var(--agent-coordinator)"></i>Pré-frontal · Coordenador</span><span><i style="background:var(--agent-financial)"></i>Parietal esq. · Financeiro</span>
+      <span><i style="background:var(--agent-operations)"></i>Parietal dir. · Operacional</span><span><i style="background:var(--agent-commercial)"></i>Temporal · Comercial</span>
+      <span><i style="background:var(--agent-marketing)"></i>Occipital e cerebelo · Marketing</span><span><i style="background:#ffbe82"></i>Impulso = sinapse disparando</span>
+      <span class="muted">Microfone no cérebro: conversa por voz · clique numa base para ver o relatório</span></div>
     <div class="kpi-strip" id="an-kpis">${Array.from({ length: 8 }, () => '<div class="ktile skeleton"></div>').join('')}</div>
     <div class="grid g3">
-      <div class="panel span2 brain-panel">
-        <h2>${h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'}, ${esc(state.assistant?.settings?.call_me || me.user.name.split(' ')[0])} · ${esc(state.assistant?.settings?.name && state.assistant.settings.name !== 'Cérebro' ? state.assistant.settings.name : 'Cérebro LORLER')}</h2>
-        <div id="chamber"></div>
-        ${canCreate ? `<form class="command" id="cmd"><input name="q" placeholder="Pergunte ao LORLER… ex.: Quais ações devem ser priorizadas para aumentar as assinaturas?" autocomplete="off" required minlength="8">
-          <button type="button" class="btn icon" id="mic" title="Falar">${svg('mic')}</button><button class="btn primary" title="Enviar">${svg('send')}</button></form>
-          <div class="row small muted" style="margin-top:8px">
-            <span>Dados:</span>
-            <label class="chip ${!hasConnected && me.demo_mode ? 'on' : ''}"><input type="radio" name="mode" value="demo" ${!hasConnected && me.demo_mode ? 'checked' : ''} ${me.demo_mode ? '' : 'disabled'}>Demonstração</label>
-            <label class="chip ${hasConnected || !me.demo_mode ? 'on' : ''}"><input type="radio" name="mode" value="real" ${hasConnected || !me.demo_mode ? 'checked' : ''}>Dados reais (Área Master)</label>
-            <span>· todos os sistemas do seu escopo · mês anterior · <a href="#/nova">opções avançadas</a></span>
-          </div>
-          <div class="chips" style="margin-top:10px">${['Quais ações devem ser priorizadas para aumentar as assinaturas?', 'Qual sistema tem maior risco de inadimplência e o que fazer?', 'Crie um post para o Instagram divulgando o ORBI', 'Devemos ampliar o período de teste grátis do ORBI na Área Master?', 'O suporte aguenta o crescimento de clientes?'].map((t) => `<button type="button" class="chip suggest" data-q="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : '<p class="muted">Seu papel permite consultar relatórios.</p>'}
-      </div>
+      <div class="panel health-panel"><h2>Saúde da carteira</h2><div class="health-wrap"><div id="an-health"></div><div id="an-health-side" class="small"></div></div><div class="formula small muted" id="an-formula"></div></div>
+      <div class="panel"><h2>Comparativo entre sistemas</h2><div id="an-radar" class="radar-wrap"></div><div id="an-radar-legend" class="legend"></div></div>
       <div class="grid">
-        <div class="panel health-panel"><h2>Saúde da carteira</h2><div class="health-wrap"><div id="an-health"></div><div id="an-health-side" class="small"></div></div><div class="formula small muted" id="an-formula"></div></div>
-        <div class="panel"><h2>Comparativo entre sistemas</h2><div id="an-radar" class="radar-wrap"></div><div id="an-radar-legend" class="legend"></div></div>
+        <div class="panel"><h2>Anomalias e leituras</h2><div id="an-insights" class="insights"></div><div class="small muted" style="margin-top:8px">Cálculos sobre os dados exibidos, não pareceres da IA.</div></div>
+        <div class="panel"><h2>Alertas</h2><div id="ov-alerts">${ov.alerts.length ? ov.alerts.map((a) => `<div class="alert ${a.level}">${esc(a.text)}</div>`).join('') : '<p class="muted">Sem alertas.</p>'}</div></div>
       </div>
     </div>
-    <div class="panel flow-panel"><h2>Fluxo dos últimos 30 dias <span class="legend inline"><span><b style="background:#3dffa8"></b>Recebido</span><span><b style="background:#19e3ff"></b>Novos cadastros</span><span><b style="background:#ff4d6a"></b>Cancelamentos</span></span></h2><div id="an-flow" class="flow-wrap"></div></div>
+    <div class="panel flow-panel"><h2>Fluxo dos últimos 30 dias <span class="legend inline"><span><b style="background:#4ade80"></b>Recebido</span><span><b style="background:#2dd4bf"></b>Novos cadastros</span><span><b style="background:#ff7a7a"></b>Cancelamentos</span></span></h2><div id="an-flow" class="flow-wrap"></div></div>
     <div class="grid g4" id="an-systems"></div>
-    <div class="grid g3">
-      <div class="panel"><h2>Leituras automáticas</h2><div id="an-insights" class="insights"></div><div class="small muted" style="margin-top:8px">Cálculos sobre os dados exibidos — não são pareceres da IA. Para decidir, pergunte ao cérebro.</div></div>
-      <div class="panel"><h2>Alertas</h2><div id="ov-alerts">${ov.alerts.length ? ov.alerts.map((a) => `<div class="alert ${a.level}">${esc(a.text)}</div>`).join('') : '<p class="muted">Sem alertas.</p>'}</div></div>
-      <div class="grid">
-        <div class="panel"><h2>Aprovações</h2><div class="kpi"><span class="v" id="ov-pending">${ov.pending_approvals}</span><span class="l">pendentes</span></div><a class="btn sm" href="#/aprovacoes" style="margin-top:10px">Abrir</a></div>
-        <div class="panel"><h2>Consumo do mês</h2><div class="metric-list"><span>Chamadas ao modelo</span><span>${fmtNum(ov.usage.calls)}</span><span>Tokens</span><span>${fmtNum(ov.usage.tokens)}</span><span>Custo</span><span>${ov.usage.cost != null ? `${Number(ov.usage.cost).toFixed(4)} ${esc(ov.usage.currency || '')}` : 'preço não configurado'}</span></div></div>
-      </div>
-    </div>
-    <div class="panel"><h2>Execuções recentes</h2><div id="ov-recent">${decisionsTable(ov.recent)}</div></div>`;
+    <div class="panel"><h2>Consumo do mês</h2><div class="metric-list"><span>Chamadas ao modelo</span><span>${fmtNum(ov.usage.calls)}</span><span>Tokens</span><span>${fmtNum(ov.usage.tokens)}</span><span>Custo</span><span>${ov.usage.cost != null ? `${Number(ov.usage.cost).toFixed(4)} ${esc(ov.usage.currency || '')}` : 'preço não configurado'}</span></div></div>`;
   const ch = createBrain($('#chamber', c), { label: 'Núcleo online · aguardando comando', onSource: openSourceReport, onVoice: () => voiceCommand(ch) });
   voice.onSpeaking = (on) => ch.setSpeaking?.(on);
   state.cleanup.push(() => { voice.onSpeaking = null; if (convo.ch === ch) { convo.on = false; convo.ch = null; } });
@@ -498,25 +691,8 @@ async function viewCore(c) {
     else if (e.type === 'status') { ch.setStatus(STATUS[e.status]?.[0] || e.status, ACTIVE.includes(e.status)); if (e.final) setTimeout(refreshSources, 800); }
   };
   state.cleanup.push(() => { clearInterval(iv); clearInterval(tick); live.close(); });
-  bindChips(c);
   bindRows(c);
-  const form = $('#cmd', c);
-  $$('.suggest', c).forEach((b) => { b.onclick = () => { form.q.value = b.dataset.q; form.q.focus(); }; });
-  c.addEventListener('click', (e) => { const b = e.target.closest('[data-ask]'); if (b && form) { form.q.value = b.dataset.ask; form.q.focus(); form.scrollIntoView({ behavior: 'smooth', block: 'center' }); } });
-  if (form) {
-    $('#mic', c).onclick = (e) => voice.listen((t, final) => { form.q.value = t; if (final && t.length >= 8) form.requestSubmit(); }, e.currentTarget);
-    form.onsubmit = async (e) => {
-      e.preventDefault();
-      const end = new Date(); end.setDate(1); end.setHours(0, 0, 0, 0);
-      const start = new Date(end); start.setMonth(start.getMonth() - 1);
-      const mode = $('input[name=mode]:checked', c)?.value || 'real';
-      try {
-        const r = await api('POST', '/api/decisions', { question: form.q.value, product_ids: products.filter((p) => p.in_scope && p.code !== 'APOLVEN').map((p) => p.id), decision_type: 'misto', mode, period: { start: start.toISOString(), end_exclusive: end.toISOString() } });
-        voice.speak('Entendido. Reunindo os especialistas.');
-        location.hash = `#/decisao/${r.decision_id}`;
-      } catch (err) { fail(err); }
-    };
-  }
+  c.addEventListener('click', (e) => { const b = e.target.closest('[data-ask]'); if (b) { state.prefill = b.dataset.ask; location.hash = '#/nucleo'; } });
 }
 
 const moneyShort = (v, axis) => {
@@ -538,14 +714,14 @@ function renderAnalytics(c, a) {
   const tm = $('#an-time', c); if (tm) tm.textContent = `leitura ${new Date(a.generated_at).toLocaleTimeString('pt-BR')}`;
   const pct = (x, y) => (y ? (x / y) * 100 : null);
   const tiles = [
-    { l: 'MRR', v: t.mrr, f: 'money', s: a.series.cash, col: '#3dffa8', sub: 'receita recorrente mensal' },
-    { l: 'Assinaturas ativas', v: t.active, s: null, col: '#19e3ff', sub: `${fmtNum(t.tenants)} empresas no total` },
-    { l: 'Em teste', v: t.trial, col: '#7befff', sub: t.conversion_pct != null ? `conversão ${t.conversion_pct.toLocaleString('pt-BR')}%` : 'conversão —' },
-    { l: 'Inadimplentes', v: t.past_due, col: '#ffb547', sub: `${(pct(t.past_due, (t.active || 0) + (t.past_due || 0)) ?? 0).toFixed(1)}% da base paga`, warn: t.past_due > 0 },
-    { l: 'Recebido · 30 dias', v: t.cash, f: 'money', s: a.series.cash, col: '#3dffa8', sub: 'pagamentos confirmados' },
-    { l: 'Em aberto', v: t.open_receivables, f: 'money', col: '#ffb547', sub: 'cobranças pendentes/vencidas' },
-    { l: 'Novos cadastros · 30d', v: t.signups, s: a.series.signups, col: '#19e3ff', sub: `${fmtNum(t.new_subscriptions)} novas assinaturas` },
-    { l: 'Cancelamentos · 30d', v: t.cancellations, s: a.series.cancellations, col: '#ff4d6a', sub: `${(pct(t.cancellations, t.active) ?? 0).toFixed(1)}% das ativas`, warn: t.cancellations > 0 },
+    { l: 'MRR', v: t.mrr, f: 'money', s: a.series.cash, col: '#4ade80', sub: 'receita recorrente mensal' },
+    { l: 'Assinaturas ativas', v: t.active, s: null, col: '#2dd4bf', sub: `${fmtNum(t.tenants)} empresas no total` },
+    { l: 'Em teste', v: t.trial, col: '#5eead4', sub: t.conversion_pct != null ? `conversão ${t.conversion_pct.toLocaleString('pt-BR')}%` : 'conversão —' },
+    { l: 'Inadimplentes', v: t.past_due, col: '#ff8a3d', sub: `${(pct(t.past_due, (t.active || 0) + (t.past_due || 0)) ?? 0).toFixed(1)}% da base paga`, warn: t.past_due > 0 },
+    { l: 'Recebido · 30 dias', v: t.cash, f: 'money', s: a.series.cash, col: '#4ade80', sub: 'pagamentos confirmados' },
+    { l: 'Em aberto', v: t.open_receivables, f: 'money', col: '#ff8a3d', sub: 'cobranças pendentes/vencidas' },
+    { l: 'Novos cadastros · 30d', v: t.signups, s: a.series.signups, col: '#2dd4bf', sub: `${fmtNum(t.new_subscriptions)} novas assinaturas` },
+    { l: 'Cancelamentos · 30d', v: t.cancellations, s: a.series.cancellations, col: '#ff7a7a', sub: `${(pct(t.cancellations, t.active) ?? 0).toFixed(1)}% das ativas`, warn: t.cancellations > 0 },
   ];
   const kp = $('#an-kpis', c);
   if (kp) {
@@ -600,7 +776,7 @@ async function openSourceReport(code) {
   catch (err) { const el = $('#modal .report'); if (el) el.innerHTML = `<div class="alert danger">${esc(err.message)}</div><button class="btn ghost" id="rp-x">Fechar</button>`; $('#rp-x')?.addEventListener('click', close); return; }
   const el = $('#modal .report'); if (!el) return;
   const col = sysColor(r.code);
-  el.style.setProperty('--sc', ['MASTER', 'INSTAGRAM', 'WHATSAPP'].includes(r.code) ? ({ MASTER: '#19e3ff', INSTAGRAM: '#ff5fa2', WHATSAPP: '#3dffa8' })[r.code] : col);
+  el.style.setProperty('--sc', ['MASTER', 'INSTAGRAM', 'WHATSAPP'].includes(r.code) ? ({ MASTER: '#2dd4bf', INSTAGRAM: '#c4a8ff', WHATSAPP: '#4ade80' })[r.code] : col);
   el.innerHTML = `
     <div class="rp-head">
       <div><div class="rp-kicker">Relatório da base · últimas atividades e projeções</div><h2 class="rp-title">${esc(r.title)}</h2><div class="small muted">${esc(r.subtitle || '')}</div></div>
@@ -638,7 +814,7 @@ function systemCard(p) {
     <div class="sc-src">${SRC_BADGE[p.source] || ''}</div>
     <div class="sc-mrr"><span class="l">MRR</span><span class="v">${k.mrr == null ? '—' : fmtMoney(k.mrr)}</span></div>
     <div class="metric-list">${row('Ativas', fmtNum(k.active))}${row('Em teste', fmtNum(k.trial))}${row('Inadimplentes', `<span class="${k.past_due ? 'warn-t' : ''}">${fmtNum(k.past_due)}</span>`)}${row('Recebido 30d', fmtMoney(k.cash))}${row('Em aberto', fmtMoney(k.open_receivables))}${row('Conversão de teste', k.conversion_pct == null ? '—' : `${k.conversion_pct.toLocaleString('pt-BR')}%`)}</div>
-    <div class="sc-charts"><div><small>Recebido/dia</small>${sparkline(p.series.cash, '#3dffa8', { w: 140, h: 34 })}</div><div><small>Cadastros/dia</small>${sparkline(p.series.signups, col, { w: 140, h: 34 })}</div></div>
+    <div class="sc-charts"><div><small>Recebido/dia</small>${sparkline(p.series.cash, '#4ade80', { w: 140, h: 34 })}</div><div><small>Cadastros/dia</small>${sparkline(p.series.signups, col, { w: 140, h: 34 })}</div></div>
     ${statusBar(p.status)}
     ${p.plans?.length ? `<div class="sc-plans">${p.plans.filter((x) => x.active).slice(0, 3).map((x) => `<span>${esc(x.name)} <b>${x.price != null ? fmtMoney(x.price) : '—'}</b>${x.tenants != null ? ` · ${fmtNum(x.tenants)}` : ''}</span>`).join('')}</div>` : ''}
     ${p.notes?.length ? `<div class="small muted" style="margin-top:6px">${p.notes.map(esc).join(' · ')}</div>` : ''}
@@ -781,21 +957,29 @@ async function viewNew(c) {
 
 // ---------------- Lista de decisões ----------------
 async function viewDecisions(c) {
-  const rows = await api('GET', '/api/decisions');
-  c.innerHTML = `<div class="panel"><h2>Decisões</h2>${decisionsTable(rows)}</div>`;
+  const [rows, products] = await Promise.all([api('GET', '/api/decisions'), api('GET', '/api/products')]);
+  const running = rows.filter((r) => ACTIVE.includes(r.status)).length; const waiting = rows.filter((r) => r.status === 'awaiting_approval').length;
+  c.innerHTML = `<div class="cmd-head"><div><span class="kicker">Debates dos agentes · cenários · aprovações</span><h1>Sala de Decisão</h1></div>
+      <div class="row">${running ? `<span class="pill"><span class="dot"></span>${running} em análise</span>` : ''}${waiting ? `<span class="pill warn"><span class="dot"></span>${waiting} aguardando aprovação</span>` : ''}${state.me.permissions.includes('create_decision') ? '<a class="btn primary" href="#/nova">Nova análise</a>' : ''}</div></div>
+    <div class="room"><div class="panel"><div class="sec-h"><h2>Decisões</h2><span class="small muted">clique para abrir o debate</span></div>${decisionsTable(rows)}</div><div class="panel" id="sim"></div></div>`;
   bindRows(c);
+  mountSimulator($('#sim', c), { products });
 }
 
 // ---------------- Detalhe da decisão (sala de agentes) ----------------
 async function viewDecision(c, id) {
   let data = await api('GET', `/api/decisions/${id}`);
   try { state.igUser = (await api('GET', '/api/social/instagram')).account?.username || null; } catch { /* opcional */ }
-  let tab = 'resumo';
+  let tab = ['resumo', 'pareceres', 'evidencias', 'proposta', 'aprovacao', 'resultado'].includes(state.query?.get('tab')) ? state.query.get('tab') : 'resumo';
   let es = null; let poll = null; let lastStatus = null; let spokenFor = null;
   c.innerHTML = `<div id="dhead"></div>
-    <div class="grid g2"><div class="panel"><h2>Cérebro LORLER</h2><div id="chamber"></div><div class="row" id="ch-actions" style="margin-top:8px"></div></div>
-      <div class="panel"><h2>Interação entre agentes</h2><div class="feed" id="feed"></div></div></div>
-    <div class="panel"><div class="tabs" id="tabs"></div><div class="tab-body" id="tbody"></div></div>`;
+    <div class="room"><div class="panel"><div class="sec-h"><h2>O que cada agente pensa</h2><span class="small muted" id="deb-n"></span></div><div class="debate" id="debate"></div></div>
+      <div class="grid"><div class="panel" id="consensus"></div><div class="panel" id="sim"></div></div></div>
+    <div id="decide"></div>
+    <div class="grid g2"><div class="panel"><h2>Cérebro ao vivo</h2><div id="chamber"></div><div class="row" id="ch-actions" style="margin-top:8px"></div></div>
+      <div class="panel"><h2>Conversa entre os agentes</h2><div class="feed" id="feed"></div></div></div>
+    <div class="panel" id="tabs-panel"><div class="tabs" id="tabs"></div><div class="tab-body" id="tbody"></div></div>`;
+  mountSimulator($('#sim', c), { products: await api('GET', '/api/products').catch(() => null) });
   const ch = createBrain($('#chamber', c), { label: 'Sincronizando…', onSource: openSourceReport, onVoice: () => voiceCommand(ch) });
   voice.onSpeaking = (on) => ch.setSpeaking?.(on);
   state.cleanup.push(() => { voice.onSpeaking = null; if (convo.ch === ch) { convo.on = false; convo.ch = null; } });
@@ -816,6 +1000,50 @@ async function viewDecision(c, id) {
       </div></div>`;
     $('#cancel', c)?.addEventListener('click', async () => { try { await api('POST', `/api/decisions/${id}/cancel`, {}); toast('Cancelamento solicitado.'); reload(); } catch (e) { fail(e); } });
     $('#rerun', c)?.addEventListener('click', async () => { try { await api('POST', `/api/decisions/${id}/rerun`, {}); toast('Nova execução enfileirada.'); reload(true); } catch (e) { fail(e); } });
+  };
+
+  const renderRoom = () => {
+    const cur = data.current;
+    const deb = $('#debate', c); const cons = $('#consensus', c); const dec = $('#decide', c);
+    if (!cur) { deb.innerHTML = '<div class="empty"><b>Sem execução</b></div>'; cons.innerHTML = ''; dec.innerHTML = ''; return; }
+    // último parecer de cada especialista
+    const last = {};
+    for (const t of cur.tasks) if (['opinion', 'challenge', 'revision'].includes(t.kind) && t.status === 'done' && t.output) last[t.agent_code] = t;
+    const running = cur.tasks.filter((t) => t.status === 'running').map((t) => t.agent_code);
+    const STANCE = { ready: ['Parecer pronto', 'good'], partial: ['Parcial', 'wait'], insufficient_data: ['Dados insuficientes', 'bad'] };
+    let total = 0, backed = 0;
+    const ini = (a) => (AGENTS[a]?.short || a).slice(0, 2).toUpperCase();
+    const rows = SPECIALISTS.map((a) => {
+      const t = last[a]; const o = t?.output || {};
+      const f = (o.findings || []); const ok = f.filter((x) => x.evidence_refs?.length && !String(x.claim).startsWith('[SEM SUPORTE]')).length;
+      total += f.length; backed += ok;
+      if (!t) return running.includes(a) ? `<div class="deb c-${a}"><div class="av"><b>${ini(a)}</b><i></i></div><div class="bd"><div class="top"><strong>${esc(AGENTS[a].short)}</strong><span class="st run">Analisando…</span></div></div></div>` : '';
+      const [sl, sc] = STANCE[o.status] || [o.status || '—', 'neutral'];
+      const refs = [...new Set(f.flatMap((x) => x.evidence_refs || []))].slice(0, 4).join(', ');
+      return `<div class="deb c-${a}"><div class="av"><b>${ini(a)}</b><i></i></div><div class="bd">
+        <div class="top"><strong>${esc(AGENTS[a].short)}${t.kind === 'challenge' ? ' · contraponto' : t.kind === 'revision' ? ' · revisão' : ''}</strong><span class="st ${sc}">${esc(sl)}${f.length ? ` · ${ok}/${f.length} com evidência` : ''}</span></div>
+        <p>${esc(o.summary || '')}${o.recommendation ? ` <b style="color:var(--ice)">Recomenda:</b> ${esc(o.recommendation)}` : ''}</p>
+        ${refs ? `<small>fontes: ${esc(refs)}</small>` : ''}</div></div>`;
+    }).join('');
+    deb.innerHTML = rows || '<div class="empty"><b>Aguardando os agentes</b>Os pareceres aparecem aqui assim que cada especialista responder.</div>';
+    $('#deb-n', c).textContent = `${Object.keys(last).length} de ${SPECIALISTS.length} pareceres`;
+    const syn = cur.synthesis; const pctB = total ? Math.round((backed / total) * 100) : null;
+    const R = 54, L = 2 * Math.PI * R;
+    cons.innerHTML = `<div class="consensus">
+      <svg width="130" height="130" viewBox="0 0 130 130" role="img" aria-label="${pctB == null ? 'Sem achados ainda' : `${pctB}% dos achados com evidência`}">
+        <circle cx="65" cy="65" r="${R}" fill="none" stroke="#172a4d" stroke-width="12"/>
+        <circle cx="65" cy="65" r="${R}" fill="none" stroke="#2dd4bf" stroke-width="12" stroke-linecap="round" stroke-dasharray="${((pctB || 0) / 100 * L).toFixed(1)} ${L.toFixed(1)}" transform="rotate(-90 65 65)"/>
+        <circle cx="65" cy="65" r="38" fill="none" stroke="#ff8a3d" stroke-width="3" stroke-dasharray="4 6" opacity=".7"/>
+        <text x="65" y="70" text-anchor="middle" fill="#e6eeff" font-family="Space Grotesk" font-size="26" font-weight="700">${pctB == null ? '—' : `${pctB}%`}</text></svg>
+      <div class="txt"><span class="k">${syn ? 'Recomendação do Coordenador' : 'Consolidação'}</span>
+        <p>${syn ? esc(syn.proposal) : ACTIVE.includes(cur.run.status) ? 'Os agentes ainda estão debatendo. A recomendação aparece aqui ao final.' : esc(cur.run.error || 'Sem recomendação nesta execução.')}</p>
+        <span class="small muted">${pctB == null ? '' : 'Anel: achados com evidência registrada · '}${syn ? `${(syn.divergences || []).length} divergência(s) · ${(syn.risks || []).length} risco(s)` : ''}</span>
+        ${syn ? `<div class="row"><button class="btn sm ghost" data-speak="${esc(syn.proposal)}">${svg('speaker')} Ouvir</button><button class="btn sm ghost" data-gotab="resumo">Ver resumo completo</button></div>` : ''}</div></div>`;
+    const prop = cur.proposals.find((p) => p.status === 'awaiting_approval');
+    dec.innerHTML = prop ? `<div class="decide-bar"><div><b style="color:var(--ice)">Pronto para decidir?</b><div class="small muted">${esc(prop.summary || '')} · fica registrado com versão, evidências e quem aprovou.</div></div>
+      <div class="row"><button class="btn primary" data-gotab="aprovacao">Revisar e aprovar</button><button class="btn ghost" data-gotab="proposta">Ver a proposta</button></div></div>` : '';
+    $$('[data-gotab]', c).forEach((b) => { b.onclick = () => { tab = b.dataset.gotab; renderTabs(); $('#tabs-panel', c).scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
+    $$('#consensus [data-speak]', c).forEach((b) => { b.onclick = () => { if (!voice.enabled) voice.toggle(); voice.speak(b.dataset.speak); }; });
   };
 
   const renderFeed = () => {
@@ -897,7 +1125,7 @@ async function viewDecision(c, id) {
 
   async function reload(newRun = false) {
     data = await api('GET', `/api/decisions/${id}`);
-    renderHead(); renderFeed(); renderChamberState(); renderTabs();
+    renderHead(); renderRoom(); renderFeed(); renderChamberState(); renderTabs();
     if (newRun) connect();
     const status = data.current?.run?.status;
     if (status !== lastStatus && lastStatus && !ACTIVE.includes(status) && data.current?.synthesis && spokenFor !== data.current.run.id) {
@@ -921,7 +1149,7 @@ async function viewDecision(c, id) {
         feed.insertAdjacentHTML('beforeend', msgHtml(e)); feed.scrollTop = 1e6;
       } else if (e.type === 'agent') {
         ch.agent(e.agent, e.state === 'thinking' ? 'thinking' : e.state === 'failed' ? 'failed' : '', e.state === 'thinking' ? `${MSG_TYPES[e.kind] || e.kind}…` : e.state === 'failed' ? 'falhou' : 'concluído');
-        if (e.agent === 'coordinator') ch.setStatus(e.state === 'thinking' ? (e.kind === 'plan' ? 'Planejando' : 'Consolidando') : $('#ch-status', c).textContent, e.state === 'thinking');
+        if (e.agent === 'coordinator') ch.setStatus(e.state === 'thinking' ? (e.kind === 'plan' ? 'Planejando' : 'Consolidando') : ($('#b-status', c)?.textContent || ''), e.state === 'thinking');
       } else if (e.type === 'status') {
         ch.setStatus(STATUS[e.status]?.[0] || e.status, ACTIVE.includes(e.status));
         data.decision.status = e.status; if (data.current) data.current.run.status = e.status; renderHead();
@@ -939,7 +1167,8 @@ async function viewDecision(c, id) {
   }
 
   lastStatus = data.current?.run?.status;
-  renderHead(); renderFeed(); renderChamberState(); renderTabs(); connect();
+  renderHead(); renderRoom(); renderFeed(); renderChamberState(); renderTabs(); connect();
+  if (state.query?.get('tab')) setTimeout(() => $('#tabs-panel', c)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
 }
 
 const evRefs = (refs, cur) => (refs || []).map((r) => { const e = cur.evidence.find((x) => x.ref_code === r); return `<span class="ev-ref" title="${esc(e ? `${e.source_type} · ${e.source_ref} · ${e.quality}` : 'inexistente')}">${esc(r)}</span>`; }).join('');

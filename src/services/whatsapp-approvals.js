@@ -9,6 +9,7 @@ import { audit } from './audit.js';
 import * as wa from '../connectors/whatsapp.js';
 import { approve, reject, requestRevision } from './actions.js';
 import { getSettings, addWaTurn, waHistory, pendingAnalysis, forgetWaChat } from './assistant.js';
+import { buildBriefing, briefingText, radarForCtx, sendBriefingTo } from './briefing.js';
 
 /** Ritmo "humano" das respostas da conversa (substituível nos testes). */
 export const waChatHooks = { delay: (ms) => new Promise((r) => setTimeout(r, ms)) };
@@ -43,7 +44,8 @@ export function myLink(ctx) {
   const c = wa.waConfig();
   return {
     configured: wa.isConfigured(), business_number: c.businessNumber || null, template_configured: !!c.template,
-    link: l ? { status: l.status, number: wa.maskNumber(l.wa_id), has_pin: !!l.pin_hash, notify: !!l.notify, verified_at: l.verified_at, pin_locked_until: l.pin_locked_until } : null,
+    link: l ? { status: l.status, number: wa.maskNumber(l.wa_id), has_pin: !!l.pin_hash, notify: !!l.notify, verified_at: l.verified_at, pin_locked_until: l.pin_locked_until, briefing: !!l.briefing, briefing_time: l.briefing_time || '07:30', briefing_last: l.briefing_last || null } : null,
+    briefing_template_configured: !!c.briefingTemplate,
   };
 }
 
@@ -68,6 +70,23 @@ export function setPin(ctx, pin) {
 
 export function setNotify(ctx, on) {
   q.run('UPDATE whatsapp_links SET notify = ? WHERE organization_id = ? AND user_id = ?', on ? 1 : 0, ctx.orgId, ctx.userId);
+  return { ok: true };
+}
+
+export function setBriefing(ctx, { enabled, time }) {
+  const t = time == null ? null : String(time);
+  if (t != null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) throw errors.invalid('Horário inválido. Use HH:MM (ex.: 07:30).');
+  const l = q.get("SELECT id FROM whatsapp_links WHERE organization_id = ? AND user_id = ? AND status = 'verified'", ctx.orgId, ctx.userId);
+  if (!l) throw errors.invalid('Vincule seu número antes de ligar o briefing.');
+  q.run('UPDATE whatsapp_links SET briefing = COALESCE(?, briefing), briefing_time = COALESCE(?, briefing_time) WHERE id = ?', enabled == null ? null : (enabled ? 1 : 0), t, l.id);
+  audit({ orgId: ctx.orgId, actorType: 'user', actorId: ctx.userId, event: 'whatsapp.briefing_updated', metadata: { enabled: enabled ?? null, time: t } });
+  return myLink(ctx);
+}
+
+export async function sendBriefingNow(ctx) {
+  const l = q.get("SELECT * FROM whatsapp_links WHERE organization_id = ? AND user_id = ? AND status = 'verified'", ctx.orgId, ctx.userId);
+  if (!l) throw errors.invalid('Número não vinculado.');
+  try { await sendBriefingTo(l); } catch (e) { throw errors.invalid(e.message); }
   return { ok: true };
 }
 
@@ -168,7 +187,7 @@ function ctxFor(link) {
   return { userId: link.user_id, orgId: link.organization_id, role: m.role, memberId: m.id, name: u?.display_name, email: u?.email, productIds: new Set(q.all('SELECT product_id FROM member_product_scopes WHERE member_id = ?', m.id).map((r) => r.product_id)) };
 }
 
-const HELP = 'Comandos LORLER:\n• *PENDENTES* — aprovações aguardando você\n• *VER código* — detalhes completos\n• *APROVAR código* — aprovar (pede o PIN)\n• *REJEITAR código motivo*\n• *REVISAR código o que mudar*\n• *CANCELAR* — desiste da confirmação em andamento';
+const HELP = 'Comandos LORLER:\n• *RESUMO* — briefing do dia\n• *RADAR* — situação de cada sistema\n• *PENDENTES* — aprovações aguardando você\n• *VER código* — detalhes completos\n• *APROVAR código* — aprovar (pede o PIN)\n• *REJEITAR código motivo*\n• *REVISAR código o que mudar*\n• *CANCELAR* — desiste da confirmação em andamento';
 
 export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t), defer = null } = {}) {
   // Deduplicação por id da mensagem (reentregas do webhook)
@@ -209,6 +228,8 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
     const m = /^(aprovar|rejeitar|revisar|ver)\s+([A-Z0-9]{6})\b\s*(.*)$/is.exec(text);
     if (m) { cmd = m[1].toLowerCase(); code = m[2].toUpperCase(); rest = m[3].trim(); }
     else if (/^pendentes?$/i.test(text)) cmd = 'pendentes';
+    else if (/^(resumo|briefing)$/i.test(text)) cmd = 'resumo';
+    else if (/^radar$/i.test(text)) cmd = 'radar';
   }
   if (!cmd) {
     if (/^(ajuda|comandos|menu|help)$/i.test(text) || !getSettings(ctx.orgId).whatsapp_chat || !text) { await say(HELP); return { help: true }; }
@@ -216,6 +237,14 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
     if (defer) { defer(chat); return { chat: 'deferred' }; }
     return chat;
   }
+
+  if (cmd === 'resumo') {
+    const b = await buildBriefing(ctx);
+    const org = q.get('SELECT timezone FROM organizations WHERE id = ?', ctx.orgId);
+    await say(briefingText(b, String(ctx.name || '').split(' ')[0], org?.timezone || undefined));
+    return { briefing: true };
+  }
+  if (cmd === 'radar') { await say(await radarForCtx(ctx)); return { radar: true }; }
 
   if (cmd === 'pendentes') {
     const rows = q.all(`SELECT r.code, p.summary, p.expires_at FROM whatsapp_requests r JOIN action_proposals p ON p.id = r.action_proposal_id
