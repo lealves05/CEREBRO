@@ -1,0 +1,15 @@
+{
+  "formato": "9x16",
+  "cor": "#f7920f",
+  "marca": "LORLER",
+  "marca_sub": "SISTEMAS DE GESTÃO",
+  "pill": "lorler.com.br",
+  "musica": true,
+  "cenas": [
+    {"tipo": "gancho", "l1": "Pix na conta pessoal", "l2": "exige CNPJ em 2027?", "sub": "Reforma tributária", "dur": 3},
+    {"tipo": "texto", "titulo": "A resposta é não", "corpo": "Receber Pix não obriga a abrir CNPJ.\nO que conta é a atividade e o faturamento.\nFonte: NC News e BPMoney, 09/11", "dur": 5.5},
+    {"tipo": "lista", "titulo": "Quem pode ter obrigação", "itens": ["Quem vende ou presta serviço com frequência", "Quem passa do limite do nanoempreendedor", "Regra começa em janeiro de 2027"], "dur": 5},
+    {"tipo": "lista", "titulo": "No seu negócio", "itens": ["Conta do negócio separada", "Cada venda registrada", "Enquadramento com o contador"], "dur": 4.5},
+    {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "Sistemas de gestão para pequenos negócios", "logo": true, "dur": 3.5}
+  ]
+}

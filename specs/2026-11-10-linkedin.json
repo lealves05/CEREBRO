@@ -1,0 +1,14 @@
+{
+  "formato": "4x5",
+  "cor": "#f7920f",
+  "marca": "LORLER",
+  "marca_sub": "SISTEMAS DE GESTÃO",
+  "pill": "lorler.com.br",
+  "musica": true,
+  "cenas": [
+    {"tipo": "gancho", "l1": "Quem mudou o preço", "l2": "da tabela?", "sub": "Planilha compartilhada não guarda decisão", "dur": 3.4},
+    {"tipo": "lista", "titulo": "Três controles", "itens": ["Permissão por perfil", "Registro de cada alteração", "Revisão semanal de preço e desconto"], "dur": 5.5},
+    {"tipo": "texto", "titulo": "O registro responde", "corpo": "Usuário, data, valor anterior e valor novo.\nA resposta fica no sistema, não na memória do balcão.", "dur": 5},
+    {"tipo": "cta", "l1": "Gestão sem improviso", "l2": "lorler.com.br", "sub": "Sistemas de gestão para pequenas empresas", "logo": true, "dur": 3.5}
+  ]
+}
