@@ -11,7 +11,17 @@ export const TONES = {
   formal: 'formal e objetivo, com vocabulário corporativo',
 };
 export const AVATAR_STYLES = ['nucleo', 'rosto', 'holograma', 'onda'];
-export const OPENAI_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse'];
+export const OPENAI_VOICES = ['marin', 'cedar', 'coral', 'nova', 'shimmer', 'sage', 'ballad', 'alloy', 'ash', 'echo', 'fable', 'onyx', 'verse'];
+export const VOICE_ENGINES = ['browser', 'openai', 'elevenlabs'];
+// Estilo da fala (vozes neurais seguem a instrução; a voz do aparelho ajusta ritmo e tom).
+export const VOICE_STYLES = {
+  natural: 'natural e espontâneo, como numa conversa entre colegas, com pausas e entonação de quem está pensando junto',
+  calorosa: 'caloroso e sorridente, próximo, transmitindo simpatia',
+  animada: 'animado e com energia, entusiasmado com as boas notícias',
+  calma: 'calmo, pausado e tranquilo, voz serena',
+  seria: 'sério, firme e objetivo, como um executivo numa reunião',
+  locutor: 'de locutor de rádio, articulado e envolvente',
+};
 
 export const DEFAULTS = Object.freeze({
   name: 'Cérebro',
@@ -19,7 +29,7 @@ export const DEFAULTS = Object.freeze({
   call_me: '',
   persona_notes: '',
   avatar: { style: 'nucleo', color: '#22d3ee', color2: '#a855f7', image: '' },
-  voice: { engine: 'browser', browser_voice: '', openai_voice: 'nova', rate: 1, pitch: 1 },
+  voice: { engine: 'browser', browser_voice: '', openai_voice: 'marin', eleven_voice: '', eleven_name: '', style: 'natural', rate: 1, pitch: 1, fillers: true, barge_in: true },
   whatsapp_chat: true,
 });
 
@@ -43,11 +53,16 @@ function merge(raw, base = DEFAULTS) {
       image: typeof a.image === 'string' && /^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(a.image) && a.image.length <= 300_000 ? a.image : '',
     },
     voice: {
-      engine: v.engine === 'openai' ? 'openai' : 'browser',
+      engine: VOICE_ENGINES.includes(v.engine) ? v.engine : 'browser',
       browser_voice: clampText(String(v.browser_voice || ''), 120),
-      openai_voice: OPENAI_VOICES.includes(v.openai_voice) ? v.openai_voice : B.voice.openai_voice,
+      openai_voice: OPENAI_VOICES.includes(v.openai_voice) ? v.openai_voice : (B.voice.openai_voice || DEFAULTS.voice.openai_voice),
+      eleven_voice: /^[A-Za-z0-9]{8,40}$/.test(String(v.eleven_voice || '')) ? v.eleven_voice : '',
+      eleven_name: clampText(String(v.eleven_name || '').replace(/[<>\r\n]/g, ' ').trim(), 60),
+      style: Object.hasOwn(VOICE_STYLES, v.style) ? v.style : (B.voice.style || 'natural'),
       rate: num(v.rate, 0.6, 1.6, B.voice.rate),
       pitch: num(v.pitch, 0.5, 1.5, B.voice.pitch),
+      fillers: v.fillers == null ? (B.voice.fillers ?? true) : v.fillers !== false,
+      barge_in: v.barge_in == null ? (B.voice.barge_in ?? true) : v.barge_in !== false,
     },
     whatsapp_chat: s.whatsapp_chat !== false,
   };
@@ -82,7 +97,8 @@ export function personaInstructions(s, channel, firstName) {
       + 'Não se apresente como "agente" nem fale de "sistema de IA" sem motivo; mas se a pessoa perguntar sinceramente se fala com uma pessoa ou com uma IA, diga a verdade: é o assistente de IA da LORLER. '
       + 'Para aprovar algo pelo WhatsApp, oriente a mandar "APROVAR código" (o PIN será pedido). Se o usuário pedir para abrir uma tela, diga que isso é no painel.';
   }
-  if (channel === 'voice') return `${base}${natural} A resposta será FALADA: no máximo 3 frases curtas, sem listas, sem markdown, sem emojis.`;
+  if (channel === 'voice') return `${base}${natural} A resposta será FALADA em voz alta, como numa ligação: no máximo 3 frases curtas, sem listas, sem markdown, sem emojis, sem siglas difíceis. `
+    + 'Fale como uma pessoa de verdade: contrações do dia a dia ("tá", "pra", "tô"), uma reação curta quando couber ("olha", "boa", "hum, entendi"), números arredondados ("quase doze mil" em vez de "11.987,40") e termine puxando a conversa quando fizer sentido.';
   return `${base}${natural} No máximo 3 frases curtas, sem listas, sem markdown, sem emojis.`;
 }
 

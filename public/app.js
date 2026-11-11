@@ -1,5 +1,6 @@
 import { createBrain } from './neural.js?v=20261109a';
 import { createAvatar } from './avatar.js?v=20261011a';
+import { speechText, sentences, FILLERS } from './speech.js?v=20261111a';
 import { sparkline, ring, animateRings, radar, statusBar, flowChart, countUp, sysColor, projectionChart } from './hud.js?v=20261007a';
 // LORLER · Central de Decisões — painel HUD (SPA sem dependências)
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -130,63 +131,127 @@ const voice = {
   enabled: store.get('voice', false),
   synth: window.speechSynthesis,
   subs: new Set(),
-  audio: null, actx: null, raf: 0, seq: 0,
-  cfg() { return state.assistant?.settings?.voice || { engine: 'browser', rate: 1, pitch: 1 }; },
+  audio: null, actx: null, raf: 0, seq: 0, speaking: false,
+  cfg() { return state.assistant?.settings?.voice || { engine: 'browser', rate: 1, pitch: 1, style: 'natural', fillers: true, barge_in: true }; },
   emit(ev) { this.subs.forEach((f) => { try { f(ev); } catch { /* */ } }); },
-  setSpeaking(on) { this.onSpeaking?.(on); this.emit({ speaking: on }); },
-  canSpeak() { return this.enabled && (!!this.synth || (this.cfg().engine === 'openai' && state.assistant?.tts_available)); },
-  clean(text) { return String(text || '').replace(/\[SEM SUPORTE\]/g, '').replace(/[*_~`#]/g, '').slice(0, 700); },
-  stop() {
+  setSpeaking(on) { if (this.speaking === on) return; this.speaking = on; this.onSpeaking?.(on); this.emit({ speaking: on }); },
+  neural() { const c = this.cfg(); const e = state.assistant?.tts_engines || {}; return (c.engine === 'openai' && (e.openai || state.assistant?.tts_available)) || (c.engine === 'elevenlabs' && e.elevenlabs && c.eleven_voice) ? c.engine : null; },
+  canSpeak() { return this.enabled && (!!this.synth || !!this.neural()); },
+  clean(text) { return speechText(String(text || '').slice(0, 1400)); },
+  stop(keep = false) {
     this.seq++;
     try { this.synth?.cancel(); } catch { /* */ }
     if (this.audio) { try { this.audio.pause(); } catch { /* */ } this.audio = null; }
     cancelAnimationFrame(this.raf);
+    if (this.speaking && !keep) this.setSpeaking(false);
   },
+  // ranking das vozes do aparelho: as "naturais/neurais" (Edge: Francisca, Thalita, Antonio · Chrome: Google) primeiro
+  rankVoice(v) {
+    let r = 0;
+    if (/pt-BR/i.test(v.lang)) r += 100; else if (/^pt/i.test(v.lang)) r += 40;
+    if (/Natural|Neural|Online/i.test(v.name)) r += 50;
+    if (/Google/i.test(v.name)) r += 30;
+    if (/Francisca|Thalita|Antonio|Luciana|Felipe|Fernanda|Daniel/i.test(v.name)) r += 10;
+    if (/compact|espeak/i.test(v.name)) r -= 60;
+    return r;
+  },
+  voices() { return (this.synth?.getVoices() || []).slice().sort((a, b) => this.rankVoice(b) - this.rankVoice(a)); },
   pickVoice() {
-    const all = this.synth?.getVoices() || [];
+    const all = this.voices();
     const want = this.cfg().browser_voice;
-    return (want && all.find((x) => x.name === want)) || all.find((x) => /pt-BR/i.test(x.lang) && /Francisca|Thalita|Luciana|Google|Natural|Online/i.test(x.name)) || all.find((x) => /pt-BR/i.test(x.lang)) || all.find((x) => /^pt/i.test(x.lang));
+    return (want && all.find((x) => x.name === want)) || all.find((x) => /^pt/i.test(x.lang));
   },
-  speakBrowser(text, my) {
-    if (!this.synth) { this.setSpeaking(false); return; }
-    const c = this.cfg();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'pt-BR'; u.rate = Number(c.rate) || 1; u.pitch = Number(c.pitch) || 1;
-    const v = this.pickVoice(); if (v) u.voice = v;
-    u.onstart = () => { if (my === this.seq) this.setSpeaking(true); };
-    u.onboundary = () => this.emit({ word: true });
-    u.onend = () => { if (my === this.seq) this.setSpeaking(false); };
-    u.onerror = () => { if (my === this.seq) this.setSpeaking(false); };
-    this.synth.speak(u);
+  // estilo → ritmo e tom para a voz do aparelho (as neurais recebem o estilo como instrução)
+  styleTune() { return { natural: [1, 1], calorosa: [0.97, 1.06], animada: [1.08, 1.1], calma: [0.9, 0.95], seria: [0.97, 0.92], locutor: [0.95, 0.97] }[this.cfg().style] || [1, 1]; },
+  speakBrowser(parts, my) {
+    if (!this.synth || !parts.length) { this.setSpeaking(false); return Promise.resolve(); }
+    const c = this.cfg(); const [sr, sp] = this.styleTune(); const v = this.pickVoice();
+    return new Promise((resolve) => {
+      let i = 0;
+      const next = () => {
+        if (my !== this.seq) return resolve();
+        if (i >= parts.length) { this.setSpeaking(false); return resolve(); }
+        const text = parts[i++];
+        const u = new SpeechSynthesisUtterance(text);
+        // leve variação de ritmo e entonação por frase: tira o "jeito de robô" de leitura contínua
+        const jit = () => 1 + (Math.random() - 0.5) * 0.06;
+        const q = /\?\s*$/.test(text) ? 1.04 : 1;
+        u.lang = 'pt-BR'; u.rate = Math.min(1.8, (Number(c.rate) || 1) * sr * jit()); u.pitch = Math.min(1.8, (Number(c.pitch) || 1) * sp * jit() * q);
+        if (v) u.voice = v;
+        u.onstart = () => { if (my === this.seq) this.setSpeaking(true); };
+        u.onboundary = () => this.emit({ word: true });
+        u.onend = u.onerror = () => { if (my === this.seq) setTimeout(next, /[.!?]$/.test(text) ? 160 : 80); };
+        this.synth.speak(u);
+      };
+      next();
+    });
   },
-  async speakNeural(text, my) {
-    const c = this.cfg();
-    const res = await fetch('/api/tts', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrf || '' }, body: JSON.stringify({ text, voice: c.openai_voice, rate: c.rate }) });
-    if (!res.ok) throw new Error('tts');
-    const blob = await res.blob();
-    if (my !== this.seq) return;
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url); this.audio = audio;
-    try {
-      this.actx ||= new (window.AudioContext || window.webkitAudioContext)();
-      if (this.actx.state === 'suspended') await this.actx.resume();
-      const src = this.actx.createMediaElementSource(audio); const an = this.actx.createAnalyser(); an.fftSize = 512;
-      src.connect(an); an.connect(this.actx.destination);
-      const buf = new Uint8Array(an.fftSize);
-      const loop = () => { an.getByteTimeDomainData(buf); let sum = 0; for (const x of buf) sum += ((x - 128) / 128) ** 2; this.emit({ level: Math.min(1, Math.sqrt(sum / buf.length) * 4) }); this.raf = requestAnimationFrame(loop); };
-      loop();
-    } catch { /* sem análise de áudio: o avatar anima sozinho */ }
-    audio.onplay = () => { if (my === this.seq) this.setSpeaking(true); };
-    audio.onended = audio.onerror = () => { cancelAnimationFrame(this.raf); URL.revokeObjectURL(url); if (my === this.seq) { this.audio = null; this.setSpeaking(false); } };
-    await audio.play();
+  ttsFetch(text) {
+    const c = this.cfg(); const engine = this.neural();
+    return fetch('/api/tts', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrf || '' },
+      body: JSON.stringify({ text, engine, voice: engine === 'elevenlabs' ? c.eleven_voice : c.openai_voice, rate: c.rate, style: c.style }) })
+      .then((res) => { if (!res.ok) throw new Error('tts'); return res.blob(); });
   },
+  playBlob(blob, my) {
+    return new Promise((resolve, reject) => {
+      if (my !== this.seq) return resolve();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url); this.audio = audio;
+      try {
+        this.actx ||= new (window.AudioContext || window.webkitAudioContext)();
+        if (this.actx.state === 'suspended') this.actx.resume();
+        const src = this.actx.createMediaElementSource(audio); const an = this.actx.createAnalyser(); an.fftSize = 512;
+        src.connect(an); an.connect(this.actx.destination);
+        const buf = new Uint8Array(an.fftSize);
+        const loop = () => { an.getByteTimeDomainData(buf); let sum = 0; for (const x of buf) sum += ((x - 128) / 128) ** 2; this.emit({ level: Math.min(1, Math.sqrt(sum / buf.length) * 4) }); this.raf = requestAnimationFrame(loop); };
+        loop();
+      } catch { /* sem análise de áudio: o avatar anima sozinho */ }
+      audio.onplay = () => { if (my === this.seq) this.setSpeaking(true); };
+      audio.onended = () => { cancelAnimationFrame(this.raf); URL.revokeObjectURL(url); if (this.audio === audio) this.audio = null; resolve(); };
+      audio.onerror = () => { cancelAnimationFrame(this.raf); URL.revokeObjectURL(url); reject(new Error('audio')); };
+      audio.play().catch(reject);
+    });
+  },
+  // voz neural frase a frase: a 1ª frase começa a tocar enquanto as próximas já estão sendo geradas (resposta mais rápida)
+  async speakNeural(parts, my) {
+    const jobs = parts.map(() => null);
+    const get = (i) => (jobs[i] ||= this.cachedFiller(parts[i]) || this.ttsFetch(parts[i]));
+    for (let i = 0; i < parts.length; i++) {
+      if (my !== this.seq) return;
+      const blob = await get(i);
+      if (i + 1 < parts.length) get(i + 1).catch(() => {});
+      if (my !== this.seq) return;
+      await this.playBlob(blob, my);
+      if (i + 1 < parts.length) await new Promise((r) => setTimeout(r, 90));
+    }
+    if (my === this.seq) this.setSpeaking(false);
+  },
+  // "deixa eu ver…" pré-gerado na voz neural (fica na memória da aba)
+  fillerCache: new Map(),
+  cachedFiller(text) { const k = `${this.neural()}|${this.cfg().openai_voice}|${this.cfg().eleven_voice}|${text}`; return this.fillerCache.get(k) || null; },
+  warmFillers() {
+    if (!this.neural() || !this.cfg().fillers) return;
+    for (const t of FILLERS.slice(0, 3)) { const k = `${this.neural()}|${this.cfg().openai_voice}|${this.cfg().eleven_voice}|${t}`; if (!this.fillerCache.has(k)) this.fillerCache.set(k, this.ttsFetch(t).catch(() => { this.fillerCache.delete(k); throw new Error('tts'); })); }
+  },
+  /** Fala uma resposta. Promise resolve quando termina (ou é interrompida). */
   speak(text, { force = false } = {}) {
-    if ((!this.enabled && !force) || !text) return;
-    this.stop();
-    const my = this.seq; const t = this.clean(text);
-    if (this.cfg().engine === 'openai' && state.assistant?.tts_available) {
-      this.speakNeural(t, my).catch(() => { if (my === this.seq) this.speakBrowser(t, my); });
-    } else this.speakBrowser(t, my);
+    if ((!this.enabled && !force) || !text) return Promise.resolve();
+    this.stop(true);
+    const my = this.seq; const parts = sentences(this.clean(text));
+    if (this.neural()) return this.speakNeural(parts, my).catch(() => (my === this.seq ? this.speakBrowser(parts, my) : null));
+    return this.speakBrowser(parts, my);
+  },
+  /** Enquanto espera a resposta: se demorar, diz uma frase curta de quem está pensando (como uma pessoa faria). */
+  think() {
+    if (!this.enabled || !this.cfg().fillers) return () => {};
+    let said = null; const my = this.seq;
+    const t = setTimeout(() => {
+      if (my !== this.seq || this.speaking) return;
+      const pool = this.neural() ? FILLERS.slice(0, 3) : FILLERS;
+      said = this.speak(pool[Math.floor(Math.random() * pool.length)], {});
+    }, 1400);
+    // devolve uma função que, quando a resposta chega, espera o "deixa eu ver" terminar (sem cortar no meio)
+    return async () => { clearTimeout(t); if (said) await Promise.race([said, new Promise((r) => setTimeout(r, 2500))]); };
   },
   toggle() { this.enabled = !this.enabled; store.set('voice', this.enabled); if (!this.enabled) this.stop(); return this.enabled; },
   listen(onText, btn, onEnd) {
@@ -250,6 +315,13 @@ const handsFree = {
     const text = String(raw || '').trim(); if (!text) return;
     const re = this.wake(); const t = norm(text);
     const named = re.test(t) || new RegExp(`\\b(${norm(state.assistant?.settings?.name || 'cerebro')}|cerebro)\\b`).test(t);
+    if (voice.speaking) {
+      // enquanto ele fala, o microfone pode captar a própria voz: só vale o nome dele ou um pedido para parar
+      const stopWord = /^(espera|peraí|pera|para|pare|chega|silencio|calma|um momento|so um minuto)\b/.test(t);
+      if (!named && !stopWord) return;
+      voice.stop();
+      if (stopWord && !named) { this.until = Date.now() + this.WINDOW_MS; this.emitState(); return; }
+    }
     const inWindow = Date.now() < this.until;
     if (!named && !inWindow && this.mode !== 'tudo') return; // conversa do ambiente: ignora
     // tira o chamado do começo ("Cérebro, ...") mantendo a pergunta
@@ -262,8 +334,10 @@ const handsFree = {
 };
 voice.subs.add((ev) => {
   if (!('speaking' in ev)) return;
-  handsFree.speaking = ev.speaking;
-  if (ev.speaking) handsFree.stop(); else { handsFree.afterReply(); handsFree.kick(450); }
+  // "interromper falando": com a opção ligada o microfone continua ouvindo enquanto ele fala,
+  // e basta chamar pelo nome ou dizer "espera/para" para ele parar e te ouvir (como numa conversa de verdade).
+  handsFree.speaking = ev.speaking && !voice.cfg().barge_in;
+  if (ev.speaking) { if (!voice.cfg().barge_in) handsFree.stop(); } else { handsFree.afterReply(); handsFree.kick(450); }
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) handsFree.stop(); else handsFree.kick(300); });
 // microfone negado/sem gesto: o primeiro toque na tela tenta de novo
@@ -377,7 +451,8 @@ function renderShell() {
 }
 
 async function loadAssistant() {
-  try { state.assistant = await api('GET', '/api/assistant'); } catch { state.assistant = { settings: { name: 'Cérebro', voice: { engine: 'browser', rate: 1, pitch: 1 }, avatar: {} }, can_edit: false, tts_available: false }; }
+  try { state.assistant = await api('GET', '/api/assistant'); } catch { state.assistant = { settings: { name: 'Cérebro', voice: { engine: 'browser', rate: 1, pitch: 1, style: 'natural', fillers: true, barge_in: true }, avatar: {} }, can_edit: false, tts_available: false, tts_engines: {} }; }
+  if (voice.enabled) setTimeout(() => voice.warmFillers(), 1500);
   return state.assistant;
 }
 
@@ -962,7 +1037,9 @@ async function voiceTurn(text) {
   }
   const sys = SYS_VOICE.find(([, re]) => re.test(t))?.[0];
   if (/relatorio|projec|ultimas atividades/.test(t) && sys) { openSourceReport(sys); return sayAndContinue(`Abrindo o relatório de ${sys === 'MASTER' ? 'Área Master' : sys}, com as últimas atividades e projeções.`, false); }
-  const r = await api('POST', '/api/conversation', { message: text.slice(0, 600), history: convo.history.slice(0, -1) });
+  const done = voice.think();
+  let r;
+  try { r = await api('POST', '/api/conversation', { message: text.slice(0, 600), history: convo.history.slice(0, -1) }); } finally { await done(); }
   if (r.intent === 'propose_analysis' && r.analysis_question) convo.pending = r.analysis_question;
   if (r.intent === 'navigate' && r.navigate_to) { location.hash = `#/${r.navigate_to}`; return sayAndContinue(r.reply, false); }
   if (r.intent === 'navigate_offer' && r.navigate_to) setTimeout(() => { location.hash = `#/${r.navigate_to}`; }, 2500);
@@ -1618,12 +1695,15 @@ function mountDock() {
   $('#dock-close', dock).onclick = () => open(false);
   $('#dock-voice', dock).onclick = (e) => { const on = voice.toggle(); e.currentTarget.innerHTML = svg(on ? 'speaker' : 'mute'); const vt = $('#vtoggle'); if (vt) vt.innerHTML = svg(on ? 'speaker' : 'mute'); };
   const typing = (on) => { dockAvatar?.setThinking(on); $('#dock-msgs .typing')?.remove(); if (on) { msgs.insertAdjacentHTML('beforeend', '<div class="dmsg bot typing"><i></i><i></i><i></i></div>'); msgs.scrollTop = msgs.scrollHeight; } };
-  const send = async (text, { confirm = null } = {}) => {
+  const send = async (text, { confirm = null, spoken = false } = {}) => {
     if (!confirm) state.chat.push({ role: 'user', text });
     render(); typing(true);
+    const done = spoken ? voice.think() : null;
     try {
       const history = state.chat.slice(-9, -1).map((m) => ({ role: m.role, text: m.text }));
-      const r = await api('POST', '/api/conversation', confirm ? { confirm_analysis: confirm, channel: 'text' } : { message: text, history, channel: 'text' });
+      const channel = spoken ? 'voice' : 'text';
+      const r = await api('POST', '/api/conversation', confirm ? { confirm_analysis: confirm, channel } : { message: text, history, channel });
+      if (done) await done();
       typing(false);
       const msg = { role: 'assistant', text: r.reply };
       if (r.intent === 'propose_analysis' && r.analysis_question) { state.chatPending = r.analysis_question; msg.action = '<button class="btn sm ok" data-dock="yes">Sim, abrir análise</button><button class="btn sm ghost" data-dock="no">Agora não</button>'; }
@@ -1633,7 +1713,7 @@ function mountDock() {
       render();
       voice.speak(r.reply);
       if (r.intent === 'navigate' && r.navigate_to) location.hash = `#/${r.navigate_to}`;
-    } catch (e) { typing(false); state.chat.push({ role: 'assistant', text: `Não consegui responder agora: ${e.message}` }); render(); }
+    } catch (e) { if (done) await done(); typing(false); state.chat.push({ role: 'assistant', text: `Não consegui responder agora: ${e.message}` }); render(); }
   };
   msgs.onclick = (e) => {
     const b = e.target.closest('[data-dock]'); if (!b) return;
@@ -1666,10 +1746,10 @@ function mountDock() {
     if (!voice.enabled) { voice.toggle(); $('#dock-voice', dock).innerHTML = svg('speaker'); const vt = $('#vtoggle'); if (vt) vt.innerHTML = svg('speaker'); }
     if (panel.classList.contains('hidden')) open(true);
     if (!q) { state.chat.push({ role: 'assistant', text: 'Oi! Estou ouvindo.' }); render(); voice.speak('Oi! Estou ouvindo.'); return; }
-    if (state.chatPending && /^(sim|pode|abre|abrir|confirmo|ok|isso|claro|bora|manda)/i.test(norm(q)) && q.length < 30) { const p = state.chatPending; state.chatPending = null; state.chat.push({ role: 'user', text: q }); state.chat.forEach((m) => { if (m.action?.includes('data-dock')) delete m.action; }); return send(null, { confirm: p }); }
+    if (state.chatPending && /^(sim|pode|abre|abrir|confirmo|ok|isso|claro|bora|manda)/i.test(norm(q)) && q.length < 30) { const p = state.chatPending; state.chatPending = null; state.chat.push({ role: 'user', text: q }); state.chat.forEach((m) => { if (m.action?.includes('data-dock')) delete m.action; }); return send(null, { confirm: p, spoken: true }); }
     if (state.chatPending && /^(nao|agora nao|cancela|deixa)/i.test(norm(q))) { state.chatPending = null; state.chat.push({ role: 'user', text: q }, { role: 'assistant', text: 'Tranquilo. Se mudar de ideia é só falar.' }); render(); voice.speak('Tranquilo. Se mudar de ideia é só falar.'); return; }
     if (/^(encerrar|tchau|obrigad|pode parar|chega)/.test(norm(q)) && !named) { handsFree.until = 0; voice.speak('Certo, estou aqui quando precisar.'); return; }
-    state.chatPending = null; send(q);
+    state.chatPending = null; send(q, { spoken: true });
   };
   hfState(handsFree.status());
   handsFree.kick(800);
@@ -1683,7 +1763,8 @@ function mountDock() {
 // ---------------- Tela: Assistente (nome, personalidade, avatar e voz) ----------------
 const TONE_LABEL = { executivo: 'Executivo — cordial e direto', amigavel: 'Amigável — caloroso e próximo', descontraido: 'Descontraído — leve e bem-humorado', formal: 'Formal — corporativo' };
 const STYLE_LABEL = { nucleo: 'Núcleo de energia', rosto: 'Rosto digital', holograma: 'Holograma', onda: 'Ondas de voz' };
-const VOICE_LABEL = { alloy: 'Alloy (neutra)', ash: 'Ash (masculina)', ballad: 'Ballad (suave)', coral: 'Coral (feminina, calorosa)', echo: 'Echo (masculina)', fable: 'Fable (expressiva)', nova: 'Nova (feminina, jovem)', onyx: 'Onyx (masculina, grave)', sage: 'Sage (calma)', shimmer: 'Shimmer (feminina, clara)', verse: 'Verse (versátil)' };
+const VOICE_LABEL = { marin: 'Marin (feminina, a mais natural) ★', cedar: 'Cedar (masculina, a mais natural) ★', alloy: 'Alloy (neutra)', ash: 'Ash (masculina, jovem)', ballad: 'Ballad (masculina, suave)', coral: 'Coral (feminina, calorosa)', echo: 'Echo (masculina)', fable: 'Fable (expressiva)', nova: 'Nova (feminina, jovem)', onyx: 'Onyx (masculina, grave)', sage: 'Sage (feminina, calma)', shimmer: 'Shimmer (feminina, clara)', verse: 'Verse (masculina, versátil)' };
+const VSTYLE_LABEL = { natural: 'Natural, de conversa', calorosa: 'Calorosa e sorridente', animada: 'Animada, com energia', calma: 'Calma e pausada', seria: 'Séria e firme', locutor: 'Locutor (rádio)' };
 
 function resizeImage(file, max = 256) {
   return new Promise((resolve, reject) => {
@@ -1703,6 +1784,7 @@ function resizeImage(file, max = 256) {
 async function viewAssistant(c) {
   const a = await loadAssistant();
   const s = structuredClone(a.settings);
+  const te = a.tts_engines || { openai: !!a.tts_available, elevenlabs: false };
   const ro = !a.can_edit;
   const dis = ro ? 'disabled' : '';
   c.innerHTML = `<div class="grid g3 assistant-page">
@@ -1733,15 +1815,23 @@ async function viewAssistant(c) {
       </div>
 
       <h2 style="margin-top:20px">Voz</h2>
+      <p class="small muted">Para a conversa soar como gente: a fala sai frase a frase com pausas naturais, valores e datas são ditos por extenso, e ele pode dizer “deixa eu ver…” enquanto pensa.</p>
       <div class="row">
         <label class="chip ${s.voice.engine === 'browser' ? 'on' : ''}"><input type="radio" name="engine" value="browser" ${s.voice.engine === 'browser' ? 'checked' : ''} ${dis}>Voz do aparelho (grátis)</label>
-        <label class="chip ${s.voice.engine === 'openai' ? 'on' : ''}" title="${a.tts_available ? '' : 'Precisa da chave da OpenAI configurada no servidor'}"><input type="radio" name="engine" value="openai" ${s.voice.engine === 'openai' ? 'checked' : ''} ${dis || (a.tts_available ? '' : 'disabled')}>Voz neural realista${a.tts_available ? '' : ' (indisponível)'}</label>
+        <label class="chip ${s.voice.engine === 'openai' ? 'on' : ''}" title="${te.openai ? '' : 'Precisa da chave da OpenAI configurada no servidor'}"><input type="radio" name="engine" value="openai" ${s.voice.engine === 'openai' ? 'checked' : ''} ${dis || (te.openai ? '' : 'disabled')}>Neural OpenAI${te.openai ? '' : ' (sem chave)'}</label>
+        <label class="chip ${s.voice.engine === 'elevenlabs' ? 'on' : ''}" title="${te.elevenlabs ? '' : 'Precisa da chave da ElevenLabs configurada no servidor'}"><input type="radio" name="engine" value="elevenlabs" ${s.voice.engine === 'elevenlabs' ? 'checked' : ''} ${dis || (te.elevenlabs ? '' : 'disabled')}>Ultra-realista ElevenLabs${te.elevenlabs ? '' : ' (sem chave)'}</label>
       </div>
       <div class="grid g2" style="margin-top:12px">
-        <label class="field" id="f-bvoice">Voz do aparelho<select name="browser_voice" ${dis}><option value="">Automática (melhor voz em português)</option></select><span class="small muted" style="text-transform:none;letter-spacing:0">As vozes disponíveis mudam de aparelho para aparelho; se a escolhida não existir, usa a melhor em português.</span></label>
-        <label class="field" id="f-ovoice">Voz neural<select name="openai_voice" ${dis}>${a.options.openai_voices.map((v) => `<option value="${v}" ${s.voice.openai_voice === v ? 'selected' : ''}>${esc(VOICE_LABEL[v] || v)}</option>`).join('')}</select></label>
+        <label class="field" id="f-bvoice">Voz do aparelho<select name="browser_voice" ${dis}><option value="">Automática (a mais natural em português)</option></select><span class="small muted" style="text-transform:none;letter-spacing:0">★ = voz natural. No <b>Microsoft Edge</b> aparecem as vozes naturais da Microsoft (Francisca, Thalita, Antonio), as mais humanas entre as gratuitas.</span></label>
+        <label class="field" id="f-ovoice">Voz OpenAI<select name="openai_voice" ${dis}>${a.options.openai_voices.map((v) => `<option value="${v}" ${s.voice.openai_voice === v ? 'selected' : ''}>${esc(VOICE_LABEL[v] || v)}</option>`).join('')}</select></label>
+        <label class="field" id="f-evoice">Voz ElevenLabs<select name="eleven_voice" ${dis}><option value="">Carregando as vozes…</option></select><span class="small muted" style="text-transform:none;letter-spacing:0">Vozes da sua conta ElevenLabs; as marcadas com 🇧🇷 foram feitas para português.</span></label>
+        <label class="field" style="align-self:start">Estilo da fala<select name="vstyle" ${dis}>${(a.options.voice_styles || Object.keys(VSTYLE_LABEL)).map((k) => `<option value="${k}" ${s.voice.style === k ? 'selected' : ''}>${esc(VSTYLE_LABEL[k] || k)}</option>`).join('')}</select></label>
         <label class="field">Velocidade <span class="mono" id="v-rate">${s.voice.rate.toFixed(2)}×</span><input type="range" name="rate" min="0.6" max="1.6" step="0.05" value="${s.voice.rate}" ${dis}></label>
         <label class="field" id="f-pitch">Tom (voz do aparelho) <span class="mono" id="v-pitch">${s.voice.pitch.toFixed(2)}</span><input type="range" name="pitch" min="0.5" max="1.5" step="0.05" value="${s.voice.pitch}" ${dis}></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="chip ${s.voice.fillers ? 'on' : ''}"><input type="checkbox" name="fillers" ${s.voice.fillers ? 'checked' : ''} ${dis}>Dizer “deixa eu ver…” quando a resposta demora</label>
+        <label class="chip ${s.voice.barge_in ? 'on' : ''}"><input type="checkbox" name="barge_in" ${s.voice.barge_in ? 'checked' : ''} ${dis}>Posso interromper (chamar pelo nome ou dizer “espera”)</label>
       </div>
 
       <h2 style="margin-top:20px">WhatsApp</h2>
@@ -1758,21 +1848,37 @@ async function viewAssistant(c) {
   state.cleanup.push(() => { voice.subs.delete(sub); av.destroy(); minis.forEach((m) => m.destroy()); });
   const f = $('#av-form', c);
   const fillVoices = () => {
-    const sel = f.browser_voice; const all = (voice.synth?.getVoices() || []).filter((v) => /^pt/i.test(v.lang));
-    const others = (voice.synth?.getVoices() || []).filter((v) => !/^pt/i.test(v.lang));
-    sel.innerHTML = '<option value="">Automática (melhor voz em português)</option>' + [...all, ...others].map((v) => `<option value="${esc(v.name)}" ${s.voice.browser_voice === v.name ? 'selected' : ''}>${esc(v.name)} · ${esc(v.lang)}</option>`).join('');
+    const sel = f.browser_voice; const all = voice.voices();
+    const pt = all.filter((v) => /^pt/i.test(v.lang)); const others = all.filter((v) => !/^pt/i.test(v.lang));
+    const opt = (v) => `<option value="${esc(v.name)}" ${s.voice.browser_voice === v.name ? 'selected' : ''}>${/Natural|Neural|Online|Google/i.test(v.name) ? '★ ' : ''}${esc(v.name.replace(/^Microsoft /, ''))} · ${esc(v.lang)}</option>`;
+    sel.innerHTML = '<option value="">Automática (a mais natural em português)</option>'
+      + (pt.length ? `<optgroup label="Português">${pt.map(opt).join('')}</optgroup>` : '')
+      + (others.length ? `<optgroup label="Outros idiomas (sotaque estrangeiro)">${others.map(opt).join('')}</optgroup>` : '');
   };
+  // vozes da ElevenLabs (lidas da conta, no servidor)
+  const fillEleven = async () => {
+    const sel = f.eleven_voice;
+    if (!te.elevenlabs) { sel.innerHTML = '<option value="">Configure a chave da ElevenLabs no servidor</option>'; return; }
+    try {
+      const r = await api('GET', '/api/tts/voices');
+      const label = (v) => `${v.pt ? '🇧🇷 ' : ''}${v.name}${[v.gender === 'female' ? 'feminina' : v.gender === 'male' ? 'masculina' : '', v.age, v.use].filter(Boolean).length ? ` (${[v.gender === 'female' ? 'feminina' : v.gender === 'male' ? 'masculina' : '', v.age, v.use].filter(Boolean).join(', ')})` : ''}`;
+      sel.innerHTML = '<option value="">Escolha uma voz</option>' + r.voices.map((v) => `<option value="${esc(v.id)}" data-name="${esc(v.name)}" ${s.voice.eleven_voice === v.id ? 'selected' : ''}>${esc(label(v))}</option>`).join('');
+    } catch (e) { sel.innerHTML = `<option value="">${esc(e.message)}</option>`; }
+  };
+  fillEleven();
   fillVoices();
   if (voice.synth) { voice.synth.onvoiceschanged = fillVoices; state.cleanup.push(() => { voice.synth.onvoiceschanged = null; }); }
-  const sample = () => `Oi, ${s.call_me || state.me.user.name.split(' ')[0]}! Eu sou ${s.name || 'o Cérebro'}. Já olhei os quatro sistemas hoje e está tudo sob controle. Quer que eu te conte o que mudou?`;
+  const sample = () => `Oi, ${s.call_me || state.me.user.name.split(' ')[0]}! Tudo bem? Aqui é ${s.name || 'o Cérebro'}. Olha, dei uma passada nos seis sistemas agora há pouco e tá tudo tranquilo. O faturamento do mês já passou de R$ 12.300,00. Quer que eu te conte o que mudou desde ontem?`;
   const read = () => {
     s.name = f.name.value.trim() || 'Cérebro'; s.call_me = f.call_me.value.trim(); s.tone = f.tone.value; s.persona_notes = f.persona_notes.value;
     s.avatar.style = f.querySelector('input[name=style]:checked')?.value || s.avatar.style; s.avatar.color = f.color.value; s.avatar.color2 = f.color2.value;
     s.voice.engine = f.querySelector('input[name=engine]:checked')?.value || 'browser'; s.voice.browser_voice = f.browser_voice.value; s.voice.openai_voice = f.openai_voice.value;
+    if (f.eleven_voice.value) { s.voice.eleven_voice = f.eleven_voice.value; s.voice.eleven_name = f.eleven_voice.selectedOptions[0]?.dataset.name || ''; }
+    s.voice.style = f.vstyle.value; s.voice.fillers = f.fillers.checked; s.voice.barge_in = f.barge_in.checked;
     s.voice.rate = Number(f.rate.value); s.voice.pitch = Number(f.pitch.value); s.whatsapp_chat = f.whatsapp_chat.checked;
     $('#v-rate', c).textContent = `${s.voice.rate.toFixed(2)}×`; $('#v-pitch', c).textContent = s.voice.pitch.toFixed(2);
     $('#f-bvoice', c).style.display = s.voice.engine === 'browser' ? '' : 'none'; $('#f-pitch', c).style.display = s.voice.engine === 'browser' ? '' : 'none';
-    $('#f-ovoice', c).style.display = s.voice.engine === 'openai' ? '' : 'none';
+    $('#f-ovoice', c).style.display = s.voice.engine === 'openai' ? '' : 'none'; $('#f-evoice', c).style.display = s.voice.engine === 'elevenlabs' ? '' : 'none';
     $$('.av-style', c).forEach((l) => l.classList.toggle('on', l.querySelector('input').checked));
     $$('.chip', c).forEach((l) => { const i = l.querySelector('input'); if (i) l.classList.toggle('on', i.checked); });
     av.update(s); minis.forEach((m, i) => m.update({ ...s, avatar: { ...s.avatar, style: a.options.avatar_styles[i], image: '' } }));
@@ -1784,14 +1890,13 @@ async function viewAssistant(c) {
   $('#av-nophoto', c)?.addEventListener('click', () => { s.avatar.image = ''; av.update(s); });
   $('#av-test', c).onclick = () => {
     const prev = state.assistant.settings; state.assistant.settings = s; // testa com o que está na tela, mesmo sem salvar
-    voice.speak(sample(), { force: true });
-    setTimeout(() => { if (state.assistant.settings === s && prev !== s) state.assistant.settings = prev; }, 200);
+    voice.speak(sample(), { force: true }).finally(() => { if (state.assistant.settings === s && prev !== s) state.assistant.settings = prev; });
   };
   f.onsubmit = async (e) => {
     e.preventDefault(); read();
     try {
       const r = await api('PUT', '/api/assistant', { name: s.name, call_me: s.call_me, tone: s.tone, persona_notes: s.persona_notes, avatar: s.avatar, voice: s.voice, whatsapp_chat: s.whatsapp_chat });
-      state.assistant.settings = r.settings; toast(`${r.settings.name} atualizado.`); mountDock();
+      state.assistant.settings = r.settings; toast(`${r.settings.name} atualizado.`); mountDock(); voice.warmFillers();
       const sv = $('#av-saved', c); if (sv) sv.textContent = 'Salvo agora.';
     } catch (err) { fail(err); }
   };

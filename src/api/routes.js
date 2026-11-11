@@ -545,8 +545,8 @@ router.get('/api/master/preview', async ({ ctx, url }) => {
 // ---------------- Assistente: personalidade, avatar e voz ----------------
 router.get('/api/assistant', ({ ctx }) => ({
   settings: assistant.getSettings(ctx.orgId), can_edit: can(ctx, 'manage_agents'),
-  options: { tones: Object.keys(assistant.TONES), avatar_styles: assistant.AVATAR_STYLES, openai_voices: assistant.OPENAI_VOICES },
-  tts_available: !!(process.env.OPENAI_API_KEY || secret('OPENAI_API_KEY')),
+  options: { tones: Object.keys(assistant.TONES), avatar_styles: assistant.AVATAR_STYLES, openai_voices: assistant.OPENAI_VOICES, voice_styles: Object.keys(assistant.VOICE_STYLES) },
+  tts_available: !!openaiKey(), tts_engines: { openai: !!openaiKey(), elevenlabs: !!elevenKey() },
 }));
 router.put('/api/assistant', ({ ctx, body, requestId }) => {
   requirePerm(ctx, 'manage_agents');
@@ -555,31 +555,71 @@ router.put('/api/assistant', ({ ctx, body, requestId }) => {
   return { settings };
 }, { bigBody: true });
 
-// Voz neural (OpenAI). A chave nunca vai para o navegador; textos curtos, com limite por usuário.
+// Vozes neurais (OpenAI e ElevenLabs). As chaves ficam só no servidor (variáveis de ambiente) e nunca vão para o navegador.
+const openaiKey = () => process.env.OPENAI_API_KEY || secret('LORLER_SECRET_OPENAI_API_KEY');
+const elevenKey = () => process.env.ELEVENLABS_API_KEY || secret('LORLER_SECRET_ELEVENLABS_API_KEY');
 const ttsHits = new Map();
+let elevenCache = { at: 0, list: [] };
+
+// Catálogo de vozes da ElevenLabs da conta (as que falam português de forma natural com o modelo multilíngue).
+router.get('/api/tts/voices', async ({ ctx }) => {
+  requirePerm(ctx, 'view');
+  const key = elevenKey();
+  if (!key) return { engine: 'elevenlabs', available: false, voices: [] };
+  if (Date.now() - elevenCache.at < 3600_000 && elevenCache.list.length) return { engine: 'elevenlabs', available: true, voices: elevenCache.list };
+  const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 12000);
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key }, signal: ac.signal });
+    if (!r.ok) throw errors.invalid(`Não consegui listar as vozes da ElevenLabs (${r.status}).`);
+    const d = await r.json();
+    const list = (d.voices || []).filter((v) => /^[A-Za-z0-9]{8,40}$/.test(v.voice_id || '')).slice(0, 120).map((v) => {
+      const l = v.labels || {};
+      const pt = Object.values(l).some((x) => /portug|brazil|brasil/i.test(String(x))) || (v.verified_languages || []).some((x) => /^pt/i.test(x.language || ''));
+      return { id: v.voice_id, name: clampText(String(v.name || ''), 60), gender: l.gender || '', age: l.age || '', accent: l.accent || '', use: l.use_case || l['use case'] || '', category: v.category || '', pt };
+    }).sort((a, b) => Number(b.pt) - Number(a.pt) || a.name.localeCompare(b.name));
+    elevenCache = { at: Date.now(), list };
+    return { engine: 'elevenlabs', available: true, voices: list };
+  } catch (e) { if (e.status) throw e; throw errors.invalid('Não consegui falar com a ElevenLabs agora.'); } finally { clearTimeout(timer); }
+});
+
 router.post('/api/tts', async ({ ctx, body, res }) => {
   requirePerm(ctx, 'view');
-  const key = process.env.OPENAI_API_KEY || secret('OPENAI_API_KEY');
-  if (!key) throw errors.invalid('Voz neural indisponível: configure a chave da OpenAI no servidor.');
+  const s = assistant.getSettings(ctx.orgId);
+  const engine = ['openai', 'elevenlabs'].includes(body?.engine) ? body.engine : (s.voice.engine === 'elevenlabs' ? 'elevenlabs' : 'openai');
+  const key = engine === 'elevenlabs' ? elevenKey() : openaiKey();
+  if (!key) throw errors.invalid(engine === 'elevenlabs' ? 'Voz ElevenLabs indisponível: configure ELEVENLABS_API_KEY no servidor.' : 'Voz neural indisponível: configure OPENAI_API_KEY no servidor.');
   const text = String(body?.text || '').trim();
   if (!text || text.length > 800) throw errors.invalid('Texto para voz deve ter de 1 a 800 caracteres.');
+  // a fala sai em frases: cabe uma conversa animada sem abrir porta para abuso
   const t = Date.now(); const hits = (ttsHits.get(ctx.userId) || []).filter((x) => t - x < 60_000);
-  if (hits.length >= 20) throw errors.limit('Muitas falas em pouco tempo. Aguarde alguns segundos.');
+  if (hits.length >= 90) throw errors.limit('Muitas falas em pouco tempo. Aguarde alguns segundos.');
   hits.push(t); ttsHits.set(ctx.userId, hits);
-  const s = assistant.getSettings(ctx.orgId);
-  const voice = assistant.OPENAI_VOICES.includes(body?.voice) ? body.voice : s.voice.openai_voice;
-  const speed = Math.min(1.6, Math.max(0.6, Number(body?.rate) || s.voice.rate || 1));
+  const style = assistant.VOICE_STYLES[Object.hasOwn(assistant.VOICE_STYLES, body?.style) ? body.style : s.voice.style] || assistant.VOICE_STYLES.natural;
+  const rate = Math.min(1.6, Math.max(0.6, Number(body?.rate) || s.voice.rate || 1));
   const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 20000);
   let r;
   try {
-    r = await fetch('https://api.openai.com/v1/audio/speech', {
-      method: 'POST', signal: ac.signal,
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: process.env.LORLER_TTS_MODEL || 'gpt-4o-mini-tts', voice, input: text, speed, response_format: 'mp3',
-        instructions: `Fale em português do Brasil, com naturalidade, tom ${assistant.TONES[s.tone]}.` }),
-    });
-  } catch { throw errors.invalid('Não consegui gerar a voz agora (tempo esgotado).'); } finally { clearTimeout(timer); }
-  if (!r.ok) throw errors.invalid(`Não consegui gerar a voz agora (OpenAI ${r.status}).`);
+    if (engine === 'elevenlabs') {
+      const vid = /^[A-Za-z0-9]{8,40}$/.test(String(body?.voice || '')) ? body.voice : s.voice.eleven_voice;
+      if (!vid) throw errors.invalid('Escolha uma voz da ElevenLabs nas configurações do assistente.');
+      const calm = /calm|seria/.test(s.voice.style);
+      r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vid}?output_format=mp3_44100_128`, {
+        method: 'POST', signal: ac.signal,
+        headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+        body: JSON.stringify({ text, model_id: process.env.LORLER_ELEVEN_MODEL || 'eleven_multilingual_v2',
+          voice_settings: { stability: calm ? 0.6 : 0.38, similarity_boost: 0.8, style: calm ? 0.1 : 0.35, use_speaker_boost: true, speed: Math.min(1.2, Math.max(0.7, rate)) } }),
+      });
+    } else {
+      const voice = assistant.OPENAI_VOICES.includes(body?.voice) ? body.voice : s.voice.openai_voice;
+      r = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST', signal: ac.signal,
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: process.env.LORLER_TTS_MODEL || 'gpt-4o-mini-tts', voice, input: text, speed: rate, response_format: 'mp3',
+          instructions: `Fale em português do Brasil, sotaque brasileiro neutro, como uma pessoa real conversando (não como leitura). Jeito: ${assistant.TONES[s.tone]}. Voz: ${style}. Respire entre as frases, varie a entonação e sorria na voz quando for boa notícia.` }),
+      });
+    }
+  } catch (e) { if (e.status) throw e; throw errors.invalid('Não consegui gerar a voz agora (tempo esgotado).'); } finally { clearTimeout(timer); }
+  if (!r.ok) throw errors.invalid(`Não consegui gerar a voz agora (${engine === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI'} ${r.status}).`);
   const buf = Buffer.from(await r.arrayBuffer());
   res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store' });
   res.end(buf);

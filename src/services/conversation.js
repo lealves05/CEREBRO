@@ -14,7 +14,7 @@ import { tokensCommitted } from './budget.js';
 import { buildAnalytics } from './analytics.js';
 import { getProvider, modelFor } from '../ai/provider.js';
 import { validateAgainst } from '../ai/schemas.js';
-import { getSettings, personaInstructions } from './assistant.js';
+import { getSettings, personaInstructions, TONES } from './assistant.js';
 import { SYSTEM_CODES } from '../seed.js';
 import { isConfigured as masterConfigured, supportBrain } from '../connectors/master.js';
 
@@ -224,7 +224,8 @@ export async function supportChat(ctx, text, history, snap, facts) {
   try {
     const r = await supportBrain({
       message: text, history: history.map((h) => ({ role: h.role, text: h.text })), contexto, telas: Object.keys(PAGES), name: persona.name || 'Cérebro',
-      persona: clampText(`${personaInstructions(persona, ctx.channel || 'voice', ctx.firstName)}`, 600),
+      persona: clampText(`Jeito: ${TONES[persona.tone] || ''}. Chame o usuário de "${persona.call_me || ctx.firstName || ''}" quando for natural.${persona.persona_notes ? ` Estilo pedido: ${persona.persona_notes}.` : ''}`
+        + ((ctx.channel || 'voice') === 'voice' ? ' A resposta será FALADA como numa ligação: até 3 frases curtas, "tá", "pra", "tô", uma reação curta quando couber ("olha", "boa"), números arredondados, e puxe a conversa no fim quando fizer sentido.' : ' Resposta escrita curta, sem markdown.'), 600),
     });
     if (!r || typeof r.reply !== 'string' || !r.reply.trim()) return null;
     const out = { reply: clampText(r.reply, ctx.channel === 'whatsapp' ? 1500 : 900), intent: 'answer', tokens: 0, via: 'suporte' };
