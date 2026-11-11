@@ -103,6 +103,10 @@ export async function call(path, opts = {}) {
     throw e;
   }
 }
+/** Conversa livre com a IA da Central de Atendimento do ORBI (mesma chave e modelo; a chave não sai do ORBI). */
+export async function supportBrain(body) {
+  return call('/atendimento/assistente/conversa', { method: 'POST', body });
+}
 export function resetSession() { session = { token: null, exp: 0 }; }
 
 export async function testConnection() {

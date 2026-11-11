@@ -16,6 +16,7 @@ import { getProvider, modelFor } from '../ai/provider.js';
 import { validateAgainst } from '../ai/schemas.js';
 import { getSettings, personaInstructions } from './assistant.js';
 import { SYSTEM_CODES } from '../seed.js';
+import { isConfigured as masterConfigured, supportBrain } from '../connectors/master.js';
 
 const SYSTEMS = SYSTEM_CODES;
 const PAGES = {
@@ -197,6 +198,45 @@ function interpret(text, snap, ctx) {
 
 function monthStart() { const d = new Date(); d.setUTCDate(1); d.setUTCHours(3, 0, 0, 0); return d.toISOString(); }
 
+/** Dados do painel que a IA pode usar (somente o que o usuário já vê). */
+function buildContexto(ctx, snap) {
+  const a = snap.analytics;
+  const contexto = {
+    usuario: ctx.firstName, data_hora: new Date().toISOString(), fonte_dos_numeros: a?.source || 'indisponível',
+    totais_ultimos_dias: a ? { dias: a.days?.length, ...a.totals } : null,
+    sistemas: a ? a.products.map((p) => ({ sistema: p.code, fonte: p.source, indicadores: p.kpis, saude: p.health })) : [],
+    aprovacoes_pendentes: { total: snap.pendingCount, itens: snap.pending.map((p) => ({ resumo: clampText(String(p.summary || ''), 200), sistema: p.product })) },
+    analises_recentes: snap.decisions.map((d) => ({ pergunta: clampText(d.question, 200), situacao: STATUS_TXT[d.status] || d.status, demonstracao: !!d.is_demo, recomendacao: FINAL.includes(d.status) ? clampText(String(synthesisOf(d)?.proposal || ''), 400) || null : null })),
+    telas: Object.keys(PAGES),
+  };
+  return contexto;
+}
+
+/**
+ * Conversa livre com a MESMA IA da Central de Atendimento do ORBI (chave e modelo do Perfil do assistente, via Área Master).
+ * Livre: fala de qualquer assunto e conhece os sistemas. Ligada sempre que a Área Master estiver configurada
+ * (LORLER_CONVERSA_IA=proprio usa o provedor do próprio Cérebro). Qualquer falha devolve null e a conversa segue sem ela.
+ */
+export async function supportChat(ctx, text, history, snap, facts) {
+  if ((process.env.LORLER_CONVERSA_IA || '').toLowerCase() === 'proprio' || !masterConfigured()) return null;
+  const persona = ctx.persona || getSettings(ctx.orgId);
+  const contexto = { ...buildContexto(ctx, snap), ...(facts?.reply ? { dados_prontos: facts.reply } : {}) };
+  try {
+    const r = await supportBrain({
+      message: text, history: history.map((h) => ({ role: h.role, text: h.text })), contexto, telas: Object.keys(PAGES), name: persona.name || 'Cérebro',
+      persona: clampText(`${personaInstructions(persona, ctx.channel || 'voice', ctx.firstName)}`, 600),
+    });
+    if (!r || typeof r.reply !== 'string' || !r.reply.trim()) return null;
+    const out = { reply: clampText(r.reply, ctx.channel === 'whatsapp' ? 1500 : 900), intent: 'answer', tokens: 0, via: 'suporte' };
+    if (r.intent === 'propose_analysis' && String(r.analysis_question || '').trim().length >= 8) Object.assign(out, { intent: 'propose_analysis', analysis_question: clampText(r.analysis_question.trim(), 600) });
+    else if (r.intent === 'navigate' && Object.hasOwn(PAGES, String(r.navigate_to || ''))) Object.assign(out, { intent: 'navigate', navigate_to: r.navigate_to });
+    return out;
+  } catch (e) {
+    console.warn(JSON.stringify({ level: 'warn', event: 'conversation.support_ai_failed', kind: e.kind || null, message: clampText(String(e.message || ''), 200) }));
+    return null;
+  }
+}
+
 /** Conversa livre com o modelo (somente provedores reais e dentro do orçamento técnico). */
 async function freeChat(ctx, text, history, snap, facts) {
   const provider = getProvider();
@@ -208,15 +248,7 @@ async function freeChat(ctx, text, history, snap, facts) {
   const committed = tokensCommitted(ctx.orgId);
   const chat = q.get('SELECT COALESCE(SUM(input_tokens + output_tokens), 0) AS t FROM conversation_turns WHERE organization_id = ? AND created_at >= ?', ctx.orgId, monthStart()).t;
   if (budget && committed.active + committed.settled + chat + 4000 > budget) return { reply: 'O orçamento técnico de IA deste mês está no limite, então só consigo responder sobre os números do painel. Ajuste o orçamento em Regras e limites se precisar.', intent: 'answer' };
-  const a = snap.analytics;
-  const contexto = {
-    usuario: ctx.firstName, data_hora: new Date().toISOString(), fonte_dos_numeros: a?.source || 'indisponível',
-    totais_ultimos_dias: a ? { dias: a.days?.length, ...a.totals } : null,
-    sistemas: a ? a.products.map((p) => ({ sistema: p.code, fonte: p.source, indicadores: p.kpis, saude: p.health })) : [],
-    aprovacoes_pendentes: { total: snap.pendingCount, itens: snap.pending.map((p) => ({ resumo: clampText(String(p.summary || ''), 200), sistema: p.product })) },
-    analises_recentes: snap.decisions.map((d) => ({ pergunta: clampText(d.question, 200), situacao: STATUS_TXT[d.status] || d.status, demonstracao: !!d.is_demo, recomendacao: FINAL.includes(d.status) ? clampText(String(synthesisOf(d)?.proposal || ''), 400) || null : null })),
-    telas: Object.keys(PAGES),
-  };
+  const contexto = buildContexto(ctx, snap);
   const resp = await provider.analyze({
     agentCode: 'coordinator', kind: 'conversation', instructions: buildInstructions(ctx.persona || getSettings(ctx.orgId), ctx.channel || 'voice', ctx.firstName),
     input: { contexto, historico: history, mensagem: text, ...(facts?.reply ? { dados_prontos: facts.reply } : {}) },
@@ -276,7 +308,7 @@ export async function converse(ctx, body, { requestId, createDecision, channel =
       const facts = interpret(text, snap, ctx);
       // com um modelo de IA ligado, a resposta é sempre conversada (os números calculados vão como "dados_prontos");
       // sem modelo, vale a interpretação direta
-      result = (await freeChat(ctx, text, history, snap, facts)) || facts || {
+      result = (await supportChat(ctx, text, history, snap, facts)) || (await freeChat(ctx, text, history, snap, facts)) || facts || {
         reply: 'Ainda não tenho um modelo de IA ligado para conversa livre, então respondo sobre os números, as aprovações e as análises. Se quiser, abro uma análise com os especialistas sobre essa pergunta. Confirma?',
         intent: 'propose_analysis', analysis_question: clampText(text, 600),
       };
@@ -284,7 +316,7 @@ export async function converse(ctx, body, { requestId, createDecision, channel =
   }
   if (result.intent === 'propose_analysis' && !can(ctx, 'create_decision')) { result.intent = 'answer'; delete result.analysis_question; }
   if (channel === 'whatsapp' && ['navigate', 'navigate_offer'].includes(result.intent)) { result.intent = 'answer'; delete result.navigate_to; }
-  audit({ orgId: ctx.orgId, actorType: 'user', actorId: ctx.userId, event: 'conversation.turn', objectType: result.decision_id ? 'decision' : null, objectId: result.decision_id || null, requestId, metadata: { intent: result.intent, ai_tokens: result.tokens || 0, channel } });
-  const { tokens: _t, ...pub } = result;
+  audit({ orgId: ctx.orgId, actorType: 'user', actorId: ctx.userId, event: 'conversation.turn', objectType: result.decision_id ? 'decision' : null, objectId: result.decision_id || null, requestId, metadata: { intent: result.intent, ai_tokens: result.tokens || 0, channel, ai: result.via || null } });
+  const { tokens: _t, via: _v, ...pub } = result;
   return pub;
 }

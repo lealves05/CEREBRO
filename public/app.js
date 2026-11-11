@@ -192,6 +192,8 @@ const voice = {
   listen(onText, btn, onEnd) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast('Reconhecimento de voz não suportado neste navegador (use Chrome ou Edge).', true); onEnd?.(); return; }
+    handsFree.hold(true);
+    const done = onEnd; onEnd = () => { handsFree.hold(false); done?.(); };
     const rec = new SR();
     rec.lang = 'pt-BR'; rec.interimResults = true; rec.maxAlternatives = 1;
     btn?.classList.add('listening');
@@ -202,6 +204,70 @@ const voice = {
     rec.start();
   },
 };
+
+// ---------------- Microfone sempre aberto ----------------
+// Fica ouvindo o tempo todo (enquanto a aba está aberta) e responde quando o usuário fala com o assistente:
+//  - modo "nome" (padrão): começa a responder quando ouve o nome dele ("Cérebro, quanto entrou hoje?") e, depois disso,
+//    continua respondendo às perguntas seguintes sem precisar repetir o nome por alguns segundos;
+//  - modo "tudo": responde a qualquer frase que ouvir (bom em sala silenciosa).
+// Pausa sozinho enquanto o assistente fala (para não ouvir a própria voz), quando outro microfone da tela está em uso e
+// quando a aba fica em segundo plano. Nada é gravado: o texto reconhecido vai só para a conversa, como se fosse digitado.
+const handsFree = {
+  on: store.get('mic_aberto', true),
+  mode: store.get('mic_modo', 'nome'),
+  rec: null, running: false, held: 0, speaking: false, blocked: false, fails: 0, timer: 0, until: 0, onText: null, onState: null,
+  WINDOW_MS: 25000,
+  supported() { return !!(window.SpeechRecognition || window.webkitSpeechRecognition); },
+  status() { return !this.on ? 'off' : this.blocked ? 'blocked' : this.running ? (Date.now() < this.until ? 'conversa' : 'ouvindo') : 'pausa'; },
+  emitState() { this.onState?.(this.status()); },
+  set(on) { this.on = on; store.set('mic_aberto', on); this.blocked = false; this.fails = 0; on ? this.kick(50) : this.stop(); this.emitState(); },
+  setMode(m) { this.mode = m === 'tudo' ? 'tudo' : 'nome'; store.set('mic_modo', this.mode); this.emitState(); },
+  hold(on) { this.held = Math.max(0, this.held + (on ? 1 : -1)); if (this.held) this.stop(); else this.kick(500); },
+  canRun() { return this.on && !this.blocked && !this.held && !this.speaking && !document.hidden && !!state.me && this.supported() && !(convo.on); },
+  kick(ms = 400) { clearTimeout(this.timer); this.timer = setTimeout(() => this.start(), ms); },
+  stop() { clearTimeout(this.timer); const r = this.rec; this.rec = null; this.running = false; if (r) { r.onend = null; try { r.abort(); } catch { /* */ } } this.emitState(); },
+  start() {
+    if (this.rec || !this.canRun()) { if (this.on && !this.blocked && !this.rec && convo.on) this.kick(2000); this.emitState(); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR(); this.rec = rec;
+    rec.lang = 'pt-BR'; rec.continuous = true; rec.interimResults = false; rec.maxAlternatives = 1;
+    rec.onstart = () => { this.running = true; this.fails = 0; this.emitState(); };
+    rec.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) this.heard(e.results[i][0].transcript);
+    };
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { this.blocked = true; this.emitState(); }
+      else if (e.error !== 'no-speech' && e.error !== 'aborted') this.fails++;
+    };
+    rec.onend = () => { if (this.rec === rec) { this.rec = null; this.running = false; } this.emitState(); if (this.canRun()) this.kick(this.fails ? Math.min(15000, 800 * 2 ** this.fails) : 250); };
+    try { rec.start(); } catch { this.rec = null; this.kick(1500); }
+  },
+  wake() {
+    const n = norm(state.assistant?.settings?.name || 'cerebro').replace(/[^a-z0-9 ]/g, '').trim();
+    return new RegExp(`^(?:(?:oi|ola|ei|e ai|fala|bom dia|boa tarde|boa noite|ok|hey)\\s*,?\\s*)?(?:${n.replace(/\s+/g, '\\s+')}|cerebro|celebro|serebro|cerebru)\\b[\\s,.!?:-]*`, 'i');
+  },
+  heard(raw) {
+    const text = String(raw || '').trim(); if (!text) return;
+    const re = this.wake(); const t = norm(text);
+    const named = re.test(t) || new RegExp(`\\b(${norm(state.assistant?.settings?.name || 'cerebro')}|cerebro)\\b`).test(t);
+    const inWindow = Date.now() < this.until;
+    if (!named && !inWindow && this.mode !== 'tudo') return; // conversa do ambiente: ignora
+    // tira o chamado do começo ("Cérebro, ...") mantendo a pergunta
+    const m = t.match(re); let q = m ? text.slice(m[0].length).trim() : text;
+    if (!named && q.split(/\s+/).length < 2) return; // ruído ("é", "hum")
+    this.until = Date.now() + this.WINDOW_MS; this.emitState();
+    this.onText?.(q, { named });
+  },
+  afterReply() { this.until = Date.now() + this.WINDOW_MS; this.emitState(); },
+};
+voice.subs.add((ev) => {
+  if (!('speaking' in ev)) return;
+  handsFree.speaking = ev.speaking;
+  if (ev.speaking) handsFree.stop(); else { handsFree.afterReply(); handsFree.kick(450); }
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) handsFree.stop(); else handsFree.kick(300); });
+// microfone negado/sem gesto: o primeiro toque na tela tenta de novo
+document.addEventListener('pointerdown', () => { if (handsFree.on && (handsFree.blocked || !handsFree.running)) { handsFree.blocked = false; handsFree.kick(100); } }, { capture: true });
 
 // ---------------- Inicialização ----------------
 async function init() {
@@ -1516,13 +1582,15 @@ function mountDock() {
   const s = state.assistant.settings;
   dock.innerHTML = `<div class="dock-panel hidden" id="dock-panel" role="dialog" aria-label="Conversa com ${esc(s.name)}">
       <header><div class="dock-who"><b>${esc(s.name)}</b><small id="dock-state">online</small></div>
+        <button class="btn icon sm ghost" id="dock-hf" title="Microfone sempre aberto">${svg('mic')}</button>
         <button class="btn icon sm ghost" id="dock-voice" title="Respostas faladas">${svg(voice.enabled ? 'speaker' : 'mute')}</button>
         <button class="btn icon sm ghost" id="dock-close" title="Fechar">${svg('close')}</button></header>
+      <div class="dock-hf small" id="dock-hf-bar"></div>
       <div class="dock-msgs" id="dock-msgs"></div>
       <form class="dock-form" id="dock-form"><input name="m" placeholder="Fale com ${esc(s.name)}…" autocomplete="off" maxlength="600">
         <button type="button" class="btn icon" id="dock-mic" title="Falar">${svg('mic')}</button><button class="btn icon primary" title="Enviar">${svg('send')}</button></form>
     </div>
-    <button class="dock-btn" id="dock-btn" title="Conversar com ${esc(s.name)}"><span class="dock-av"></span><span class="dock-dot"></span></button>`;
+    <button class="dock-btn" id="dock-btn" title="Conversar com ${esc(s.name)}"><span class="dock-av"></span><span class="dock-dot"></span><span class="dock-ear" id="dock-ear" title="Microfone aberto">${svg('mic')}</span></button>`;
   dockAvatar?.destroy();
   dockAvatar = createAvatar($('.dock-av', dock), s, { size: 72, label: false });
   if (voice.dockSub) voice.subs.delete(voice.dockSub);
@@ -1579,6 +1647,32 @@ function mountDock() {
     if (state.chatPending && /^(sim|pode|abre|abrir|confirmo|ok|isso|claro|bora|manda)/i.test(t) && t.length < 30) { const q = state.chatPending; state.chatPending = null; state.chat.push({ role: 'user', text: t }); state.chat.forEach((m) => { if (m.action?.includes('data-dock')) delete m.action; }); return send(null, { confirm: q }); }
     state.chatPending = null; send(t);
   };
+  // microfone sempre aberto
+  const hfBtn = $('#dock-hf', dock); const hfBar = $('#dock-hf-bar', dock); const ear = $('#dock-ear', dock);
+  const HF_TXT = { off: 'Microfone fechado. Toque no microfone para deixar aberto.', blocked: 'O navegador bloqueou o microfone. Toque aqui e permita o uso do microfone.', pausa: 'Microfone aberto (pausado enquanto fala ou em outra tela).', ouvindo: '', conversa: 'Pode continuar falando, estou ouvindo.' };
+  const hfState = (st) => {
+    hfBtn.classList.toggle('on', handsFree.on); hfBtn.title = handsFree.on ? 'Microfone aberto — toque para fechar' : 'Microfone fechado — toque para abrir';
+    ear.className = `dock-ear ${st}`;
+    const call = esc(s.name);
+    const base = st === 'ouvindo' ? (handsFree.mode === 'tudo' ? `Microfone aberto: respondo a tudo que ouvir.` : `Microfone aberto: é só me chamar — “${call}, …”.`) : HF_TXT[st] || '';
+    hfBar.innerHTML = handsFree.supported() ? `${svg('mic')}<span>${esc(base)}</span>${handsFree.on ? `<select id="dock-hf-mode" title="Quando responder"><option value="nome" ${handsFree.mode === 'nome' ? 'selected' : ''}>Quando eu chamar pelo nome</option><option value="tudo" ${handsFree.mode === 'tudo' ? 'selected' : ''}>A tudo que ouvir</option></select>` : ''}` : 'Este navegador não ouve continuamente (use Chrome ou Edge).';
+    hfBar.className = `dock-hf small ${st}`;
+    const sel = $('#dock-hf-mode', hfBar); if (sel) sel.onchange = () => handsFree.setMode(sel.value);
+  };
+  handsFree.onState = hfState;
+  hfBtn.onclick = () => { handsFree.set(!handsFree.on); toast(handsFree.on ? 'Microfone aberto: pode falar comigo a qualquer momento.' : 'Microfone fechado.'); };
+  hfBar.onclick = (e) => { if (e.target.closest('select')) return; if (handsFree.blocked || !handsFree.on) handsFree.set(true); };
+  handsFree.onText = (q, { named }) => {
+    if (!voice.enabled) { voice.toggle(); $('#dock-voice', dock).innerHTML = svg('speaker'); const vt = $('#vtoggle'); if (vt) vt.innerHTML = svg('speaker'); }
+    if (panel.classList.contains('hidden')) open(true);
+    if (!q) { state.chat.push({ role: 'assistant', text: 'Oi! Estou ouvindo.' }); render(); voice.speak('Oi! Estou ouvindo.'); return; }
+    if (state.chatPending && /^(sim|pode|abre|abrir|confirmo|ok|isso|claro|bora|manda)/i.test(norm(q)) && q.length < 30) { const p = state.chatPending; state.chatPending = null; state.chat.push({ role: 'user', text: q }); state.chat.forEach((m) => { if (m.action?.includes('data-dock')) delete m.action; }); return send(null, { confirm: p }); }
+    if (state.chatPending && /^(nao|agora nao|cancela|deixa)/i.test(norm(q))) { state.chatPending = null; state.chat.push({ role: 'user', text: q }, { role: 'assistant', text: 'Tranquilo. Se mudar de ideia é só falar.' }); render(); voice.speak('Tranquilo. Se mudar de ideia é só falar.'); return; }
+    if (/^(encerrar|tchau|obrigad|pode parar|chega)/.test(norm(q)) && !named) { handsFree.until = 0; voice.speak('Certo, estou aqui quando precisar.'); return; }
+    state.chatPending = null; send(q);
+  };
+  hfState(handsFree.status());
+  handsFree.kick(800);
   $('#dock-mic', dock).onclick = (e) => {
     if (!voice.enabled) { voice.toggle(); $('#dock-voice', dock).innerHTML = svg('speaker'); }
     voice.stop();
