@@ -69,5 +69,9 @@ empresas usam nos sistemas):
    longa (~15 s) e responde por ele. Na primeira mensagem, o número é vinculado sozinho ao proprietário (quando há um só);
    se não, cadastre em **WhatsApp › Seu número pessoal**.
 
-Pelo Master as mensagens são só texto: botões viram "Responda: *APROVAR código* · *REJEITAR código* · *VER código*",
-e notas de voz/fotos não passam (use a Cloud API para isso). `LORLER_WA_VIA_MASTER=off` desliga a ponte.
+Pelo Master passam texto, notas de voz (o Whisper da VPS transcreve e eu respondo com a voz local), fotos e vídeos (vão
+para os posts do marketing). Botões viram "Responda: *APROVAR código* · *REJEITAR código* · *VER código*".
+`LORLER_WA_VIA_MASTER=off` desliga a ponte.
+
+Posts aprovados: o `lorler-publicador` da VPS lê `social-fila/saida` a cada 5 min (sem passar pelo Drive), publica na
+hora marcada e devolve `resultados/` e `status.json` (redes conectadas). Instalar/atualizar: `LIGAR-PUBLICADOR-CEREBRO.bat`.

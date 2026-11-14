@@ -104,6 +104,29 @@ export async function call(path, opts = {}) {
   }
 }
 /** Conversa livre com a IA da Central de Atendimento do ORBI (mesma chave e modelo; a chave não sai do ORBI). */
+/** Baixa um arquivo (mídia do WhatsApp do suporte entregue ao Cérebro). Até 16 MB. */
+export async function callBinary(path) {
+  if (!session.token || session.exp < Date.now()) await login();
+  const go = async () => {
+    const c = cfg();
+    const url = `${c.url}/api/master${path}`;
+    await assertSafe(url);
+    const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 60000);
+    try {
+      const res = await masterHooks.fetch(url, { signal: ac.signal, redirect: 'manual', headers: { Authorization: `Bearer ${session.token}`, ...(/^[A-Za-z0-9_-]{20,100}$/.test(c.porta) ? { Cookie: `lorler_porta=${c.porta}` } : {}), 'User-Agent': 'LORLER-Central-de-Decisoes' } });
+      if (res.status === 401) throw new MasterError('auth', 'Área Master (401)');
+      if (!res.ok) throw new MasterError('api', `Área Master (${res.status}) ao baixar o arquivo.`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 16 * 1024 * 1024) throw new MasterError('contract', 'Arquivo grande demais.');
+      return { buffer: buf, mime: (res.headers.get('content-type') || 'application/octet-stream').split(';')[0] };
+    } catch (e) {
+      if (e instanceof MasterError) throw e;
+      throw new MasterError('timeout', e.name === 'AbortError' ? 'Tempo limite ao baixar da Área Master.' : 'Falha de conexão com a Área Master.');
+    } finally { clearTimeout(timer); }
+  };
+  try { return await go(); } catch (e) { if (e.kind === 'auth') { session = { token: null, exp: 0 }; await login(); return go(); } throw e; }
+}
+
 export async function supportBrain(body) {
   return call('/atendimento/assistente/conversa', { method: 'POST', body });
 }

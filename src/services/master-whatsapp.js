@@ -38,7 +38,11 @@ export async function pollOnce({ wait = 15 } = {}) {
       await wa.sendText(phone, 'Oi! Ainda não sei que é você. No Cérebro, abra *WhatsApp › Seu número pessoal* e salve este número.').catch(() => {});
       continue;
     }
-    try { await handle({ id: `master.${m.id}`, from: phone, text: String(m.text || '').slice(0, 4000) }, { reply: (to, t) => wa.sendText(to, t) }); }
+    const msg = { id: `master.${m.id}`, from: phone, text: String(m.text || '').slice(0, 4000) };
+    if (m.media && m.kind === 'audio') msg.audio = { id: `master:${m.id}`, mime: m.mime || 'audio/ogg', voice: true };
+    else if (m.media && (m.kind === 'image' || m.kind === 'video')) msg.media = { id: `master:${m.id}`, mime: m.mime || (m.kind === 'image' ? 'image/jpeg' : 'video/mp4'), kind: m.kind === 'image' ? 'imagem' : 'video' };
+    else if (m.media) { await wa.sendText(phone, 'Recebi o arquivo, mas por aqui eu uso foto, vídeo e áudio. Se for um documento, me conta em texto o que precisa.').catch(() => {}); if (!msg.text) continue; }
+    try { await handle(msg, { reply: (to, t) => wa.sendText(to, t) }); }
     catch (e) { console.warn(JSON.stringify({ level: 'warn', event: 'master_whatsapp.handle_failed', message: String(e.message).slice(0, 160) })); }
   }
   return items.length;

@@ -3,7 +3,7 @@
 import crypto from 'node:crypto';
 import { secret } from '../config.js';
 import { safeEqual, clampText } from '../lib/util.js';
-import { call as masterCall, isConfigured as masterConfigured } from './master.js';
+import { call as masterCall, callBinary as masterBinary, isConfigured as masterConfigured } from './master.js';
 
 export const waHooks = { fetch: (...a) => fetch(...a) };
 
@@ -118,6 +118,8 @@ export function extractMessages(body) {
 // ---------- áudio (notas de voz) ----------
 /** Baixa uma mídia recebida (nota de voz). Limite de 16 MB (o mesmo do WhatsApp para áudio). */
 export async function downloadMedia(mediaId) {
+  // mídia que chegou pelo WhatsApp da LORLER conectado no Master (QR Code)
+  if (/^master:\d+$/.test(String(mediaId))) return masterBinary(`/atendimento/whatsapp/cerebro/midia/${String(mediaId).slice(7)}`);
   const c = waConfig();
   if (!cloudConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
   const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 20000);
@@ -136,6 +138,11 @@ export async function downloadMedia(mediaId) {
 
 /** Sobe um áudio (ogg/opus) e manda como nota de voz. */
 export async function sendVoiceNote(to, buffer, mime = 'audio/ogg') {
+  if (!cloudConfigured() && viaMaster()) {
+    const r = await masterCall('/atendimento/whatsapp/cerebro/enviar-audio', { method: 'POST', body: { to, audio_b64: Buffer.from(buffer).toString('base64'), mime } })
+      .catch((e) => { throw new WhatsAppError(`WhatsApp (Master): ${clampText(e.message, 200)}`); });
+    return r?.id || 'master';
+  }
   const c = waConfig();
   if (!cloudConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
   const fd = new FormData();

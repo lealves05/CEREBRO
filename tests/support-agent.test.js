@@ -77,11 +77,13 @@ test('número pessoal do dono: não cai no suporte, conversa como ele mesmo', as
 test('ponte com o Master (WhatsApp por QR Code): mensagem do número pessoal chega ao Cérebro e a resposta volta', async () => {
   const bridge = await import('../src/services/master-whatsapp.js');
   const handled = [];
-  bridge.bridgeHooks.call = async (p) => { assert.match(p, /\/atendimento\/whatsapp\/cerebro\/pendentes/); return { items: [{ id: 7, phone: '5519998765432', text: 'RESUMO' }, { id: 8, phone: '5511900001111', text: 'oi' }], owner_number: '5519998765432' }; };
+  bridge.bridgeHooks.call = async (p) => { assert.match(p, /\/atendimento\/whatsapp\/cerebro\/pendentes/); return { items: [{ id: 7, phone: '5519998765432', text: 'RESUMO' }, { id: 8, phone: '5511900001111', text: 'oi' }, { id: 9, phone: '5519998765432', text: '', kind: 'audio', mime: 'audio/ogg', media: true }, { id: 10, phone: '5519998765432', text: 'pro post', kind: 'image', mime: 'image/jpeg', media: true }], owner_number: '5519998765432' }; };
   bridge.bridgeHooks.handle = async (m, { reply }) => { handled.push(m); await reply(m.from, 'ok'); return {}; };
   const n = await bridge.pollOnce({ wait: 0 });
-  assert.equal(n, 2);
-  assert.equal(handled.length, 1, 'só o número vinculado vira conversa');
+  assert.equal(n, 4);
+  assert.equal(handled.length, 3, 'só o número vinculado vira conversa');
   assert.equal(handled[0].id, 'master.7');
+  assert.deepEqual(handled[1].audio, { id: 'master:9', mime: 'audio/ogg', voice: true });
+  assert.equal(handled[2].media.id, 'master:10'); assert.equal(handled[2].media.kind, 'imagem');
   assert.equal(bridge.bridgeStatus().ok, true);
 });
