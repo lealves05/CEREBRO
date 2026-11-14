@@ -70,4 +70,19 @@ test('imagem promocional: gera a arte, guarda e deixa o post pronto com código'
   assert.match(r.reply, /APROVAR M[A-Z0-9]{5}/);
 });
 
+test('arte em cima da foto que ele mandou', async () => {
+  assert.equal(owner.quickIntent('gera uma imagem em cima dela com o título "Promoção de verão"')?.args.titulo, 'Promoção de verão');
+  assert.equal(owner.quickIntent('coloca o texto "Agenda aberta" nessa foto')?.args.usar_ultima_foto, true);
+  // sem foto recente: pede a foto
+  const none = await owner.perform({ ...ctx, channel: 'voz' }, 'gerar_imagem', { usar_ultima_foto: true });
+  assert.match(none.reply, /me manda a imagem/);
+  const mkt = await import('../src/services/marketing.js');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  mkt.saveMedia(ctx, png, 'image/png', 'foto.png');
+  const r = await owner.perform({ ...ctx, channel: 'voz' }, 'gerar_imagem', { usar_ultima_foto: true, titulo: 'Promoção de verão' });
+  if (/Não consegui montar/.test(r.reply)) return; // ambiente sem rsvg-convert
+  assert.match(r.reply, /Arte pronta: .+\.png/);
+  assert.match(r.reply, /APROVAR M[A-Z0-9]{5}/);
+});
+
 test('quem não é dono não usa o atalho', () => { assert.equal(owner.isOwner({ ...ctx, role: 'analyst' }), false); });

@@ -100,7 +100,7 @@ test('reunião pelo WhatsApp: perguntas → plano → ajuste → APROVAR código
   assert.match(last(), /PIN incorreto/);
   await send('4071');
   assert.match(last(), /✅ Aprovado/);
-  assert.match(last(), /na fila/);
+  assert.match(last(), /agendados|publicando agora/);
   const files = fs.readdirSync(path.join(FILA, 'saida')).filter((f) => f.startsWith('cerebro-'));
   assert.ok(files.length >= 3, 'posts gravados na fila do publicador');
   const post = JSON.parse(fs.readFileSync(path.join(FILA, 'saida', files[0]), 'utf8'));
@@ -176,4 +176,19 @@ test('painel: plano, aprovação exige permissão e senha recente, cancelar tira
   assert.equal(ed.body.issues.length, 0);
   const ov = await owner.call('GET', '/api/mkt/overview');
   assert.ok(ov.body.library.length >= 12 && ov.body.publisher && ov.body.items.length);
+});
+
+test('post aprovado pelo WhatsApp publica na hora (e "AGENDADO" mantém o horário)', async () => {
+  const ctxA = { orgId: orgA, userId: ownerId, role: 'owner', productIds: null };
+  const later = new Date(Date.now() + 3 * 86400000).toISOString();
+  const mk = () => { const it = mkt.createItem(ctxA, { kind: 'post', title: 'Teste agora', networks: ['facebook'], text: 'Olá do ORBI', media_url: 'https://cdn.jsdelivr.net/gh/x/y.jpg', media_kind: 'imagem', scheduled_at: later }, { source: 'teste' }); mkt.submit(ctxA, { item_id: it.id }); return it; };
+  const a = mk();
+  const r = mkt.approve(ctxA, { item_id: a.id, via: 'whatsapp', publishNow: true });
+  assert.equal((r.now || []).length, 1);
+  const qa = JSON.parse(fs.readFileSync(path.join(FILA, 'saida', `cerebro-${a.id}.json`), 'utf8'));
+  assert.ok(Date.parse(qa.quando) <= Date.now() + 1000, 'vai para a fila com horário de agora');
+  assert.equal(mkt.getItem(ctxA, a.id).status, 'na_fila');
+  const b = mk();
+  mkt.approve(ctxA, { item_id: b.id, via: 'whatsapp', publishNow: false });
+  assert.equal(JSON.parse(fs.readFileSync(path.join(FILA, 'saida', `cerebro-${b.id}.json`), 'utf8')).quando, later);
 });

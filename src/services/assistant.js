@@ -108,15 +108,15 @@ export function personaInstructions(s, channel, firstName) {
   return `${base}${natural} No máximo 3 frases curtas, sem listas, sem markdown, sem emojis.`;
 }
 
-// ---------- memória curta do WhatsApp ----------
-const DAY = 24 * 3600_000;
+// ---------- memória do WhatsApp (30 dias de conversa; o que importa também vai para o cofre) ----------
+const KEEP = 30 * 24 * 3600_000;
 
 export function addWaTurn(ctx, role, text, meta = null) {
   insert('wa_chat_turns', { id: uuid(), organization_id: ctx.orgId, user_id: ctx.userId, role, text: clampText(String(text || ''), 1200), meta: meta ? JSON.stringify(meta) : null, created_at: now() });
 }
 
-export function waHistory(ctx, limit = 10) {
-  const since = new Date(Date.now() - DAY).toISOString();
+export function waHistory(ctx, limit = 16) {
+  const since = new Date(Date.now() - KEEP).toISOString();
   q.run('DELETE FROM wa_chat_turns WHERE created_at < ?', since);
   return q.all('SELECT role, text, meta, created_at FROM wa_chat_turns WHERE user_id = ? AND organization_id = ? ORDER BY created_at DESC LIMIT ?', ctx.userId, ctx.orgId, limit).reverse();
 }

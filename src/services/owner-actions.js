@@ -22,7 +22,7 @@ export const isOwner = (ctx) => ctx?.role === 'owner';
 export const CATALOG = [
   { nome: 'redes_status', descricao: 'confere a conexão com as redes sociais e se o publicador da VPS está pronto para publicar' },
   { nome: 'criar_post', descricao: 'cria um post (texto e mídia da biblioteca) e deixa pronto para aprovar', args: 'tema, redes[instagram|facebook|tiktok|linkedin], quando (ex.: "amanhã 18h"), sistema (ORBI, TORVEN...)' },
-  { nome: 'gerar_imagem', descricao: 'gera uma imagem/arte promocional de um sistema (feed 1080x1350), manda a imagem e deixa um post pronto com ela', args: 'sistema, tema, titulo (opcional), apoio (opcional), redes[]' },
+  { nome: 'gerar_imagem', descricao: 'gera uma imagem/arte promocional (feed 1080x1350) com título e chamada; pode usar como fundo a foto que ele acabou de mandar. Manda a imagem e deixa um post pronto com ela', args: 'sistema, tema, titulo (texto principal), apoio (frase menor), cta, usar_ultima_foto (true se ele mandou uma foto e quer a arte em cima dela), redes[]' },
   { nome: 'agenda_posts', descricao: 'lista os posts e ações agendados e o que espera aprovação' },
   { nome: 'reuniao_marketing', descricao: 'começa a reunião de marketing (plano de posts, anúncio e ações comerciais)' },
   { nome: 'empresas', descricao: 'lista empresas clientes da Área Master', args: 'filtro (teste|inadimplentes|vencendo|ativas|bloqueadas), sistema, termo' },
@@ -40,11 +40,27 @@ const NAMES = [...CATALOG.map((a) => a.nome), 'redes_e_post'];
 const WRITES = new Set(['empresa_bloquear', 'empresa_liberar', 'empresa_prorrogar_teste', 'empresa_pagamento_recebido', 'empresa_trocar_plano', 'atendimento_responder']);
 
 // ---------------- atalhos sem IA ----------------
+/** 'com o título "X"', 'escrito X', 'frase: X' → { titulo } */
+export function titleFrom(text) {
+  const m = /(?:t[ií]tulo|escrit[oa]|frase|texto|escrevendo|dizendo)\s*(?:de|:|com)?\s*["“']([^"”']{3,120})["”']/i.exec(text) || /(?:t[ií]tulo|escrit[oa]|frase|texto)\s*:\s*(.{3,120})$/i.exec(text);
+  return m ? { titulo: m[1].trim() } : {};
+}
+/** Última foto que o dono mandou (até 2 h). */
+function lastPhoto(ctx) {
+  const r = q.get("SELECT id, mime FROM mkt_media WHERE organization_id = ? AND created_by = ? AND mime LIKE 'image/%' AND filename NOT LIKE '%-promo.%' AND created_at > ? ORDER BY created_at DESC LIMIT 1", ctx.orgId, ctx.userId, new Date(Date.now() - 2 * 3600_000).toISOString());
+  if (!r) return null;
+  const m = mkt.readMedia(r.id);
+  return m ? { buffer: Buffer.from(m.data), mime: m.mime } : null;
+}
 export function quickIntent(text) {
   const f = fold(text);
   const redes = /\b(redes?( sociais)?|instagram|insta|facebook|face|tiktok|linkedin|publicador)\b/.test(f);
   const querPost = /\b(cri|ger|faz|mont|escrev|prepar)\w* (um |uma |o |a )?(post|publicacao)/.test(f);
   if (redes && /\b(conex|conect|disponiv|pront|funcion|ligad|status|situacao|verific|confer|ja (da|posso|podemos)|consegu)/.test(f)) return { nome: querPost ? 'redes_e_post' : 'redes_status', args: {} };
+  if (/\b(em cima|por cima|sobre) (dela|dessa|desta|da foto|da imagem|disso)\b|\b(nessa|nesta|na) (foto|imagem)\b.*\b(texto|titulo|frase|escrev|coloc|arte)|\b(coloc|escrev|bot)\w* .*\b(nessa|nesta|na) (foto|imagem)\b/.test(f)) {
+    const sis = (f.match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1];
+    return { nome: 'gerar_imagem', args: { usar_ultima_foto: true, ...(sis ? { sistema: sis.toUpperCase() } : {}), ...titleFrom(text) } };
+  }
   if (/\b(ger|cri|faz|mont|desenh|produz|prepar)\w*\b.*\b(imagem|imagens|arte|banner|card|flyer|criativo|figura|foto promocional)\b/.test(f) || /\b(imagem|arte|banner|flyer|criativo) (promocional|de divulgacao|pra divulgar|para divulgar)\b/.test(f)) {
     const sis = (f.match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1];
     return { nome: 'gerar_imagem', args: sis ? { sistema: sis.toUpperCase() } : {} };
@@ -100,14 +116,19 @@ async function run(ctx, nome, a = {}, text = '') {
       return `${status.replace(/ Quer que eu gere um post agora\?$/, '')}\n\n${post}`;
     }
     case 'gerar_imagem': {
-      const sistema = String(a.sistema || (fold(text).match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1] || 'ORBI').toUpperCase();
-      const img = await promo.generate({ sistema, tema: a.tema || '', titulo: a.titulo || '', apoio: a.apoio || '', cta: a.cta || '' });
+      const named = a.sistema || (fold(text).match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1];
+      const sistema = String(named || (a.usar_ultima_foto ? 'LORLER' : 'ORBI')).toUpperCase(); // arte em cima da foto dele sem sistema citado: marca LORLER
+      const wantsPhoto = a.usar_ultima_foto === true || a.usar_ultima_foto === 'true' || /\b(em cima|dessa|desta|nessa|da foto|que (te )?mandei|que enviei)\b/.test(fold(text));
+      const bg = wantsPhoto ? lastPhoto(ctx) : null;
+      if (wantsPhoto && !bg) return 'Não achei a foto: me manda a imagem aqui (pode ser com a legenda do que você quer escrever) que eu faço a arte em cima dela.';
+      const t = a.titulo ? {} : titleFrom(text);
+      const img = await promo.generate({ sistema, tema: a.tema || '', titulo: a.titulo || t.titulo || '', apoio: a.apoio || '', cta: a.cta || '', bg });
       if (!img) throw new Error('Não consegui montar a imagem agora (a biblioteca de mídia não respondeu). Tenta de novo em instantes.');
       const saved = mkt.saveMedia(ctx, img.buffer, img.mime, `${sistema.toLowerCase()}-promo.${img.mime === 'image/png' ? 'png' : 'jpg'}`);
       const nets = Array.isArray(a.redes) && a.redes.length ? a.redes.filter((n) => ['instagram', 'facebook', 'tiktok', 'linkedin'].includes(n)) : ['instagram', 'facebook'];
-      const dr = mkt.draftTexts({ product: sistema, topic: a.tema || '' });
+      const dr = mkt.draftTexts({ product: sistema === 'LORLER' ? null : sistema, topic: a.tema || img.titulo || '' });
       const when = (() => { const d = new Date(Date.now() + 86400000); return mkt.atLocal(d.toISOString().slice(0, 10), '18:30'); })();
-      const it = mkt.createItem(ctx, { kind: 'post', title: `${sistema}: ${img.titulo}`.slice(0, 120), networks: nets, text: dr.text, texts: dr.texts, media_url: saved.url, media_kind: 'imagem', format: '4x5', scheduled_at: when, link: `https://${sistema.toLowerCase()}.lorler.com.br` }, { source: `conversa:${ctx.channel || 'voz'}` });
+      const it = mkt.createItem(ctx, { kind: 'post', title: `${sistema}: ${img.titulo}`.slice(0, 120), networks: nets, text: dr.text, texts: dr.texts, media_url: saved.url, media_kind: 'imagem', format: '4x5', scheduled_at: when, link: sistema === 'LORLER' ? 'https://lorler.com.br' : `https://${sistema.toLowerCase()}.lorler.com.br` }, { source: `conversa:${ctx.channel || 'voz'}` });
       const sub = mkt.submit(ctx, { item_id: it.id });
       const link = q.get("SELECT wa_id FROM whatsapp_links WHERE organization_id = ? AND user_id = ? AND status = 'verified'", ctx.orgId, ctx.userId);
       let sent = false;

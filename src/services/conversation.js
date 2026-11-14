@@ -283,9 +283,10 @@ async function freeChat(ctx, text, history, snap, facts) {
   return r;
 }
 
-function cleanHistory(h) {
+function cleanHistory(h, channel = 'voice') {
   if (!Array.isArray(h)) return [];
-  return h.slice(-8).filter((x) => x && (x.role === 'user' || x.role === 'assistant')).map((x) => ({ role: x.role, text: clampText(String(x.text || ''), 400) }));
+  const wa = channel === 'whatsapp';
+  return h.slice(wa ? -16 : -8).filter((x) => x && (x.role === 'user' || x.role === 'assistant')).map((x) => ({ role: x.role, text: clampText(String(x.text || ''), wa ? 800 : 400) }));
 }
 
 /** Abre a análise confirmada pelo usuário (mesmas regras da tela "Nova análise"). */
@@ -307,7 +308,7 @@ export function openAnalysis(ctx, question, createDecision) {
  */
 export async function converse(ctx, body, { requestId, createDecision, channel = 'voice' }) {
   ctx = { ...ctx, channel, persona: ctx.persona || getSettings(ctx.orgId) };
-  const history = cleanHistory(body.history);
+  const history = cleanHistory(body.history, channel);
   let result;
   if (typeof body.confirm_analysis === 'string') {
     const question = body.confirm_analysis.trim();
@@ -333,7 +334,7 @@ export async function converse(ctx, body, { requestId, createDecision, channel =
       if (skill && !skill.rephrase) result = skill;
     }
     if (!result) {
-      ctx.memoria = vault.recall(ctx, text);
+      ctx.memoria = vault.recall(ctx, text, channel === 'whatsapp' ? 6 : 4);
       const snap = await snapshot(ctx);
       const facts = skill || interpret(text, snap, ctx);
       // com um modelo de IA ligado, a resposta é sempre conversada (os números calculados vão como "dados_prontos");

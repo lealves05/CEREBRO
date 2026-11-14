@@ -75,15 +75,16 @@ export function pick(sistema, tema = '') {
 }
 
 /** Gera a imagem. Devolve { buffer, mime, how: 'arte'|'biblioteca', lib }. */
-export async function generate({ sistema = 'ORBI', tema = '', titulo = '', apoio = '', cta = '' } = {}) {
+export async function generate({ sistema = 'ORBI', tema = '', titulo = '', apoio = '', cta = '', bg = null } = {}) {
   sistema = String(sistema || 'ORBI').toUpperCase();
   const lib = pick(sistema, tema || titulo);
   const head = titulo || lib?.gancho || `${sistema}: gestão simples`;
   const sub = apoio || lib?.apoio || '';
-  const chamada = cta || lib?.cta || `Teste grátis: ${sistema.toLowerCase()}.lorler.com.br`;
-  const photo = lib ? await download(lib.feed) : null;
+  const chamada = cta || lib?.cta || (sistema === 'LORLER' ? 'lorler.com.br' : `Teste grátis: ${sistema.toLowerCase()}.lorler.com.br`);
+  // foto enviada pelo dono (arte "em cima dela") ou a foto da biblioteca do sistema
+  const photo = bg?.buffer?.length ? { buffer: bg.buffer, mime: bg.mime || 'image/jpeg' } : lib ? await download(lib.feed) : null;
   const png = await rasterize(buildSvg({ sistema, titulo: head, apoio: sub, cta: chamada, bg: photo ? `data:${photo.mime};base64,${photo.buffer.toString('base64')}` : null }));
   if (png) return { buffer: png, mime: 'image/png', how: 'arte', lib, titulo: head };
-  if (photo) return { buffer: photo.buffer, mime: photo.mime === 'image/png' ? 'image/png' : 'image/jpeg', how: 'biblioteca', lib, titulo: lib.gancho };
+  if (photo && !bg) return { buffer: photo.buffer, mime: photo.mime === 'image/png' ? 'image/png' : 'image/jpeg', how: 'biblioteca', lib, titulo: lib.gancho };
   return null;
 }

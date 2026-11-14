@@ -295,7 +295,7 @@ export function submit(ctx, { item_id = null, campaign_id = null }) {
 }
 
 /** Aprova (o chamador já confirmou senha ou PIN e a permissão "approve"). Posts vão para a fila; ações viram tarefas. */
-export function approve(ctx, { item_id = null, campaign_id = null, via = 'painel' }) {
+export function approve(ctx, { item_id = null, campaign_id = null, via = 'painel', publishNow = false }) {
   const targets = campaign_id ? getCampaign(ctx, campaign_id).items.filter((i) => ['rascunho', 'aguardando_aprovacao', 'erro'].includes(i.status)) : [getItem(ctx, item_id)];
   if (!targets.length) throw errors.conflict('Nada para aprovar.');
   const blocked = targets.filter((i) => i.issues.length);
@@ -303,8 +303,12 @@ export function approve(ctx, { item_id = null, campaign_id = null, via = 'painel
   for (const it of targets) {
     if (it.issues.length) continue;
     if (it.payload_hash && it.payload_hash !== hashItem(it)) { out.skipped.push({ id: it.id, title: it.title, issues: ['mudou depois do envio para aprovação'] }); continue; }
-    q.run("UPDATE mkt_items SET status = 'aprovado', approved_by = ?, approved_at = ?, payload_hash = ?, updated_at = ? WHERE id = ?", ctx.userId, now(), hashItem(it), now(), it.id);
-    if (it.kind === 'post') { enqueue({ ...it, status: 'aprovado' }); out.queued.push(it.id); }
+    // aprovado no WhatsApp = publica já (o publicador da VPS é acionado na hora); horário que já passou também sai na hora
+    const nowIso = new Date().toISOString();
+    const when = it.kind === 'post' && (publishNow || !it.scheduled_at || it.scheduled_at < nowIso) ? nowIso : it.scheduled_at;
+    if (when !== it.scheduled_at) q.run('UPDATE mkt_items SET scheduled_at = ? WHERE id = ?', when, it.id);
+    q.run("UPDATE mkt_items SET status = 'aprovado', approved_by = ?, approved_at = ?, payload_hash = ?, updated_at = ? WHERE id = ?", ctx.userId, now(), hashItem({ ...it, scheduled_at: when }), now(), it.id);
+    if (it.kind === 'post') { enqueue({ ...it, scheduled_at: when, status: 'aprovado' }); out.queued.push(it.id); if (when === nowIso) (out.now ||= []).push(it.id); }
     else if (it.kind === 'acao') { out.tasks.push(...createTasks(ctx, it)); q.run("UPDATE mkt_items SET status = 'concluido', updated_at = ? WHERE id = ?", now(), it.id); }
     else out.ready_ads.push(it.id);
   }

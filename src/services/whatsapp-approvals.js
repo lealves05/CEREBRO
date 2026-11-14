@@ -13,6 +13,7 @@ import { getSettings, addWaTurn, waHistory, pendingAnalysis, forgetWaChat } from
 import { buildBriefing, briefingText, radarForCtx, sendBriefingTo } from './briefing.js';
 import * as voiceLocal from './voice-local.js';
 import * as mkt from './marketing.js';
+import * as owner from './owner-actions.js';
 import * as meeting from './meeting.js';
 import * as support from './support-agent.js';
 
@@ -263,8 +264,16 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
     try {
       const file = await (waChatHooks.download || wa.downloadMedia)(msg.media.id);
       const saved = mkt.saveMedia(ctx, file.buffer, file.mime || msg.media.mime, `whatsapp.${msg.media.kind === 'video' ? 'mp4' : 'jpg'}`);
+      // foto com legenda pedindo arte ("faz uma arte em cima dela com o título …"): monta a arte com a foto de fundo
+      const artAsk = saved.kind === 'imagem' && text && /\b(arte|imagem|banner|flyer|post|card|titulo|texto|frase|escrev|coloc|em cima|edit|promo)/i.test(text.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+      if (artAsk && owner.isOwner(ctx)) {
+        const r = await owner.perform({ ...ctx, channel: 'whatsapp' }, 'gerar_imagem', { usar_ultima_foto: true, ...owner.titleFrom(text) }, text);
+        await say(r.reply);
+        return { media: saved.id, art: true };
+      }
       const n = meeting.attachMedia(ctx, saved);
-      await say(n ? `Recebi ${saved.kind === 'video' ? 'o vídeo' : 'a imagem'} e coloquei em ${n} post${n > 1 ? 's' : ''}. 👍` : `Recebi ${saved.kind === 'video' ? 'o vídeo' : 'a imagem'} e guardei. Diga, por exemplo, "agende um post no Instagram amanhã 18h sobre …" que eu uso ${saved.kind === 'video' ? 'ele' : 'ela'}.`);
+      const offer = saved.kind === 'imagem' && owner.isOwner(ctx) ? ' Se quiser, eu faço uma arte em cima dela: diga, por exemplo, "faz uma arte com o título …".' : '';
+      await say(n ? `Recebi ${saved.kind === 'video' ? 'o vídeo' : 'a imagem'} e coloquei em ${n} post${n > 1 ? 's' : ''}. 👍${offer}` : `Recebi ${saved.kind === 'video' ? 'o vídeo' : 'a imagem'} e guardei.${offer || ` Diga, por exemplo, "agende um post no Instagram amanhã 18h sobre …" que eu uso ${saved.kind === 'video' ? 'ele' : 'ela'}.`}`);
       if (!text) return { media: saved.id, attached: n };
     } catch (e) { await say(`Não consegui pegar ${msg.media.kind === 'video' ? 'o vídeo' : 'a imagem'}: ${e.message}`); return { media: 'error' }; }
   }
@@ -302,7 +311,9 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
       if (link.pin_locked_until && link.pin_locked_until > now()) { await say('PIN bloqueado por tentativas erradas. Tente mais tarde ou aprove pelo painel.'); return { error: 'locked' }; }
       const resumo = target.campaign_id ? (() => { const c = mkt.getCampaign(ctx, target.campaign_id); return `o plano *${clampText(c.name, 60)}* (${c.items.filter((i) => i.status === 'aguardando_aprovacao').length} itens)`; })() : (() => { const it = mkt.getItem(ctx, target.item_id); return `*${clampText(it.title, 60)}* — ${mkt.fmtWhen(it.scheduled_at)} no ${it.networks.map((n) => mkt.NETWORK_LABEL[n]).join(' e ')}`; })();
       q.run(`UPDATE ${target.campaign_id ? 'mkt_campaigns' : 'mkt_items'} SET wa_pin_until = ? WHERE id = ?`, addMs(5 * 60_000), target.campaign_id || target.item_id);
-      await say(`Para aprovar ${resumo}, envie seu PIN (vale 5 minutos). Depois disso eu publico sozinho no horário. CANCELAR desiste.`);
+      const keep = /\b(agend|no horario|horario marcado|depois)/i.test(rest.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+      keepSchedule.set(target.campaign_id || target.item_id, keep);
+      await say(`Para aprovar ${resumo}, envie seu PIN (vale 5 minutos). ${target.campaign_id ? 'Os posts do plano saem nos dias marcados (os de hoje que já passaram, na hora).' : keep ? 'Ele sai no horário marcado.' : 'Assim que aprovar, eu publico na hora (para manter o horário marcado, mande APROVAR código AGENDADO).'} CANCELAR desiste.`);
       return { awaiting_pin: 'marketing' };
     }
   }
@@ -383,6 +394,7 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
   return { help: true };
 }
 
+const keepSchedule = new Map(); // id → manter o horário marcado ("APROVAR código AGENDADO")
 async function confirmMktPin(ctx, link, wait, pin, say) {
   if (link.pin_locked_until && link.pin_locked_until > now()) { await say('PIN bloqueado. Aprove pelo painel.'); return { error: 'locked' }; }
   if (!checkPin(pin, link.pin_hash)) {
@@ -395,9 +407,13 @@ async function confirmMktPin(ctx, link, wait, pin, say) {
   }
   q.run('UPDATE whatsapp_links SET pin_failed = 0 WHERE id = ?', link.id);
   try {
-    const r = mkt.approve(ctx, wait.t === 'c' ? { campaign_id: wait.id, via: 'whatsapp' } : { item_id: wait.id, via: 'whatsapp' });
+    const publishNow = wait.t !== 'c' && !keepSchedule.get(wait.id);
+    keepSchedule.delete(wait.id);
+    const r = mkt.approve(ctx, wait.t === 'c' ? { campaign_id: wait.id, via: 'whatsapp' } : { item_id: wait.id, via: 'whatsapp', publishNow });
     const parts = [];
-    if (r.queued.length) parts.push(`${r.queued.length} post${r.queued.length > 1 ? 's' : ''} na fila (saem sozinhos no horário)`);
+    const agora = (r.now || []).length;
+    if (agora) parts.push(`${agora === 1 ? 'publicando agora' : `${agora} posts publicando agora`} (em até 1 minuto estão no ar; te aviso aqui quando sair)`);
+    if (r.queued.length - agora > 0) parts.push(`${r.queued.length - agora} post${r.queued.length - agora > 1 ? 's' : ''} agendado${r.queued.length - agora > 1 ? 's' : ''} (saem sozinhos no horário)`);
     if (r.ready_ads.length) parts.push(`${r.ready_ads.length} anúncio pronto pra você subir (te mando os detalhes no painel, em Marketing)`);
     if (r.tasks.length) parts.push(`${r.tasks.length} tarefa${r.tasks.length > 1 ? 's' : ''} das ações comerciais`);
     const pend = r.skipped.length ? `\n⚠️ Ficou de fora: ${r.skipped.map((x) => `${clampText(x.title, 40)} (${x.issues[0]})`).join('; ')}.` : '';
