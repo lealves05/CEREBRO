@@ -192,3 +192,25 @@ test('post aprovado pelo WhatsApp publica na hora (e "AGENDADO" mantém o horár
   mkt.approve(ctxA, { item_id: b.id, via: 'whatsapp', publishNow: false });
   assert.equal(JSON.parse(fs.readFileSync(path.join(FILA, 'saida', `cerebro-${b.id}.json`), 'utf8')).quando, later);
 });
+
+test('WhatsApp: "Aprovar mwoym74071" (código e PIN colados), "APROVAR CÓDIGO PIN" e "APROVAR PIN AGENDADO"', async () => {
+  const ctxA = { orgId: orgA, userId: ownerId, role: 'owner', productIds: null };
+  const replies = []; const reply = async (_to, t) => { replies.push(t); return 'ok'; };
+  const later = new Date(Date.now() + 2 * 86400000).toISOString();
+  const mk = () => { const it = mkt.createItem(ctxA, { kind: 'post', title: 'Teste pin', networks: ['facebook'], text: 'Olá', media_url: 'https://cdn.jsdelivr.net/gh/x/y.jpg', media_kind: 'imagem', scheduled_at: later }, { source: 'teste' }); return { it, code: mkt.submit(ctxA, { item_id: it.id }).code }; };
+  const a = mk();
+  await handleInbound(msg(`Aprovar ${a.code.toLowerCase()}4071`), { reply });
+  assert.match(replies.at(-1), /✅ Aprovado.*publicando agora/s);
+  assert.equal(mkt.getItem(ctxA, a.it.id).status, 'na_fila');
+  const b = mk();
+  await handleInbound(msg(`APROVAR ${b.code} 4071`), { reply });
+  assert.match(replies.at(-1), /✅ Aprovado/);
+  const c = mk();
+  await handleInbound(msg(`APROVAR ${c.code}`), { reply });
+  assert.match(replies.at(-1), /envie seu PIN/);
+  await handleInbound(msg('APROVAR 4071 AGENDADO'), { reply });
+  assert.match(replies.at(-1), /agendado/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(FILA, 'saida', `cerebro-${c.it.id}.json`), 'utf8')).quando, later);
+  await handleInbound(msg('APROVAR 999999'), { reply });
+  assert.match(replies.at(-1), /Não achei o código 999999/);
+});

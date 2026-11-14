@@ -278,14 +278,19 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
     } catch (e) { await say(`Não consegui pegar ${msg.media.kind === 'video' ? 'o vídeo' : 'a imagem'}: ${e.message}`); return { media: 'error' }; }
   }
 
+  // "APROVAR MWOYM7221106" (código e PIN colados) → "APROVAR MWOYM7 221106"
+  { const g = /^aprovar\s+([a-z0-9]{6})(\d{4,8})\b\s*(.*)$/i.exec(text); if (g) text = `APROVAR ${g[1].toUpperCase()} ${g[2]}${g[3] ? ` ${g[3]}` : ''}`; }
+  // PIN esperado: aceita "221106", "PIN 221106", "APROVAR 221106" e "APROVAR 221106 AGENDADO"
+  const pinMsg = /^(?:aprovar\s+|aprovo\s+|pin\s*:?\s*|meu pin (?:e|é)\s*)?(\d{4,8})(?:\s+(agendad\w*|no horario|no horário))?\s*[.!]?$/i.exec(text);
+
   // PIN de aprovação do marketing (plano ou post)
   const mktWait = q.get("SELECT 'c' AS t, id FROM mkt_campaigns WHERE organization_id = ? AND wa_pin_until > ? UNION ALL SELECT 'i' AS t, id FROM mkt_items WHERE organization_id = ? AND wa_pin_until > ? LIMIT 1", ctx.orgId, now(), ctx.orgId, now());
-  if (mktWait && /^\d{4,8}$/.test(text)) return confirmMktPin(ctx, link, mktWait, text, say);
+  if (mktWait && pinMsg) { if (pinMsg[2]) keepSchedule.set(mktWait.id, true); return confirmMktPin(ctx, link, mktWait, pinMsg[1], say); }
   if (mktWait && /^cancelar$/i.test(text)) { q.run('UPDATE mkt_campaigns SET wa_pin_until = NULL WHERE organization_id = ?', ctx.orgId); q.run('UPDATE mkt_items SET wa_pin_until = NULL WHERE organization_id = ?', ctx.orgId); await say('Ok, nada foi aprovado.'); return { canceled: true }; }
 
   // Confirmação de PIN pendente
   const waiting = q.get("SELECT * FROM whatsapp_requests WHERE user_id = ? AND status = 'awaiting_pin' AND pending_until > ? ORDER BY created_at DESC LIMIT 1", ctx.userId, now());
-  if (waiting && /^\d{4,8}$/.test(text)) return confirmPin(ctx, link, waiting, text, say);
+  if (waiting && pinMsg) return confirmPin(ctx, link, waiting, pinMsg[1], say);
   if (/^cancelar$/i.test(text)) {
     q.run("UPDATE whatsapp_requests SET status = 'sent', pending_until = NULL WHERE user_id = ? AND status = 'awaiting_pin'", ctx.userId);
     await say('Confirmação cancelada. Nada foi aprovado.');
@@ -313,6 +318,12 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
       q.run(`UPDATE ${target.campaign_id ? 'mkt_campaigns' : 'mkt_items'} SET wa_pin_until = ? WHERE id = ?`, addMs(5 * 60_000), target.campaign_id || target.item_id);
       const keep = /\b(agend|no horario|horario marcado|depois)/i.test(rest.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
       keepSchedule.set(target.campaign_id || target.item_id, keep);
+      // PIN já veio junto ("APROVAR MWOYM7 221106"): aprova direto
+      const inlinePin = (/\b(\d{4,8})\b/.exec(rest) || [])[1];
+      if (inlinePin) {
+        const fresh = q.get('SELECT * FROM whatsapp_links WHERE id = ?', link.id) || link;
+        return confirmMktPin(ctx, fresh, { t: target.campaign_id ? 'c' : 'i', id: target.campaign_id || target.item_id }, inlinePin, say);
+      }
       await say(`Para aprovar ${resumo}, envie seu PIN (vale 5 minutos). ${target.campaign_id ? 'Os posts do plano saem nos dias marcados (os de hoje que já passaram, na hora).' : keep ? 'Ele sai no horário marcado.' : 'Assim que aprovar, eu publico na hora (para manter o horário marcado, mande APROVAR código AGENDADO).'} CANCELAR desiste.`);
       return { awaiting_pin: 'marketing' };
     }
@@ -322,6 +333,12 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
     const linhas = [...pend.campaigns.map((c) => `🗂️ Plano ${clampText(c.name, 50)} — APROVAR ${c.wa_code}`), ...pend.items.map((i) => `📣 ${clampText(i.title, 50)} (${mkt.fmtWhen(i.scheduled_at)}) — APROVAR ${i.wa_code}`)];
     await say(`${linhas.length ? `*Esperando sua aprovação*\n${linhas.join('\n')}\n\n` : 'Nada esperando aprovação.\n\n'}*Próximos 7 dias*\n${up.length ? up.map((i) => `${mkt.fmtWhen(i.scheduled_at)} · ${i.kind === 'post' ? i.networks.map((n) => mkt.NETWORK_LABEL[n]).join('+') : mkt.KIND_LABEL[i.kind]} · ${clampText(i.title, 40)} (${i.status_label})`).join('\n') : 'nada agendado'}\n\nPara um plano novo, diga "reunião de marketing".`);
     return { marketing: true };
+  }
+  if (!cmd && /^aprov/i.test(text)) {
+    const pend = mkt.pendingApproval(ctx);
+    const codes = [...pend.campaigns.map((c) => c.wa_code), ...pend.items.map((i) => i.wa_code)].slice(0, 5);
+    await say(`Para aprovar, mande *APROVAR código PIN*${codes.length ? ` (esperando: ${codes.join(', ')})` : ''}, ex.: APROVAR ${codes[0] || 'M12345'} 1234. Para manter o horário marcado, acrescente AGENDADO.`);
+    return { help: 'aprovar' };
   }
   if (!cmd) {
     if (/^(ajuda|comandos|menu|help)$/i.test(text) || !getSettings(ctx.orgId).whatsapp_chat || !text) { await say(HELP); return { help: true }; }
@@ -346,7 +363,12 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
   }
 
   const req = q.get('SELECT * FROM whatsapp_requests WHERE code = ? AND user_id = ?', String(code || '').toUpperCase(), ctx.userId);
-  if (!req) { await say('Código não encontrado para o seu número.'); return { error: 'code' }; }
+  if (!req) {
+    const pend = mkt.pendingApproval(ctx);
+    const codes = [...pend.campaigns.map((c) => `${c.wa_code} (${clampText(c.name, 40)})`), ...pend.items.map((i) => `${i.wa_code} (${clampText(i.title, 40)})`)].slice(0, 5);
+    await say(`Não achei o código ${code}. ${codes.length ? `Esperando aprovação: ${codes.join(', ')}. ` : ''}Mande assim: *APROVAR código PIN* (ex.: APROVAR ${codes.length ? codes[0].split(' ')[0] : 'M12345'} 1234). Para manter o horário marcado, acrescente AGENDADO.`);
+    return { error: 'code' };
+  }
   const p = q.get('SELECT * FROM action_proposals WHERE id = ? AND organization_id = ?', req.action_proposal_id, ctx.orgId);
   if (!p || p.status !== 'awaiting_approval' || p.version !== req.proposal_version || p.payload_hash !== req.payload_hash || !['sent', 'awaiting_pin'].includes(req.status)) {
     await say(`Este pedido não está mais válido (situação: ${p?.status || 'inexistente'}${p && p.version !== req.proposal_version ? ', a proposta mudou de versão' : ''}). Envie PENDENTES para ver os atuais.`);
@@ -387,6 +409,8 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
     if (!link.pin_hash) { await say('Cadastre seu PIN no painel (Administração › WhatsApp) para aprovar por aqui.'); return { error: 'no_pin' }; }
     if (link.pin_locked_until && link.pin_locked_until > now()) { await say('PIN bloqueado por tentativas erradas. Tente mais tarde ou aprove pelo painel.'); return { error: 'locked' }; }
     q.run("UPDATE whatsapp_requests SET status = 'awaiting_pin', pending_until = ? WHERE id = ?", addMs(5 * 60_000), req.id);
+    const inlinePin = (/\b(\d{4,8})\b/.exec(rest) || [])[1];
+    if (inlinePin) return confirmPin(ctx, link, q.get('SELECT * FROM whatsapp_requests WHERE id = ?', req.id), inlinePin, say);
     await say(`Para confirmar a aprovação de *${clampText(p.summary, 80)}*, envie seu PIN (válido por 5 minutos). Envie CANCELAR para desistir.`);
     return { awaiting_pin: true };
   }
