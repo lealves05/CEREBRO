@@ -20,6 +20,7 @@ import { isConfigured as masterConfigured, supportBrain } from '../connectors/ma
 import * as vault from './vault.js';
 import { runSkill, consumeAwaiting, publicSkills } from './skills.js';
 import * as meeting from './meeting.js';
+import * as owner from './owner-actions.js';
 
 const SYSTEMS = SYSTEM_CODES;
 const PAGES = {
@@ -230,11 +231,17 @@ export async function supportChat(ctx, text, history, snap, facts) {
   const contexto = { ...buildContexto(ctx, snap), ...(facts?.reply ? { dados_prontos: facts.reply } : {}) };
   try {
     const r = await supportBrain({
+      ...(owner.isOwner(ctx) ? { acoes: owner.catalogForBrain() } : {}),
       message: text, history: history.map((h) => ({ role: h.role, text: h.text })), contexto, telas: Object.keys(PAGES), name: persona.name || 'Cérebro',
       persona: clampText(`Jeito: ${TONES[persona.tone] || ''}. Chame o usuário de "${persona.call_me || ctx.firstName || ''}" quando for natural.${persona.persona_notes ? ` Estilo pedido: ${persona.persona_notes}.` : ''}`
         + ((ctx.channel || 'voice') === 'voice' ? ' A resposta será FALADA como numa ligação: até 3 frases curtas, "tá", "pra", "tô", uma reação curta quando couber ("olha", "boa"), números arredondados, e puxe a conversa no fim quando fizer sentido.' : ' Resposta escrita curta, sem markdown.'), 600),
     });
     if (!r || typeof r.reply !== 'string' || !r.reply.trim()) return null;
+    // a IA escolheu uma ação do catálogo do dono: o Cérebro executa (ou pede o SIM)
+    if (r.intent === 'action' && r.action?.nome && owner.isOwner(ctx)) {
+      const done = await owner.perform(ctx, r.action.nome, r.action.args || {}, text);
+      if (done) return { ...done, via: 'suporte', tokens: 0 };
+    }
     const out = { reply: clampText(r.reply, ctx.channel === 'whatsapp' ? 1500 : 900), intent: 'answer', tokens: 0, via: 'suporte' };
     if (r.intent === 'propose_analysis' && String(r.analysis_question || '').trim().length >= 8) Object.assign(out, { intent: 'propose_analysis', analysis_question: clampText(r.analysis_question.trim(), 600) });
     else if (r.intent === 'navigate' && Object.hasOwn(PAGES, String(r.navigate_to || ''))) Object.assign(out, { intent: 'navigate', navigate_to: r.navigate_to });
@@ -312,6 +319,11 @@ export async function converse(ctx, body, { requestId, createDecision, channel =
     if (text.length > (channel === 'whatsapp' ? 1000 : 600)) throw errors.invalid('Mensagem longa demais para a conversa (até 600 caracteres). Use "Nova análise" para perguntas longas.');
     // reunião de marketing aberta (ou pedida): ela conduz; "aprovar" ali só envia para aprovação com código + PIN/senha
     if (!/^(tchau|ate (logo|mais))\b/.test(fold(text))) { try { result = await meeting.handle(ctx, text, channel); } catch (e) { result = { reply: `Não consegui seguir a reunião: ${e.message}`, intent: 'answer' }; } }
+    // dono: "SIM/NÃO" para a ação do Master/Cérebro que eu pedi para confirmar, e atalhos (redes, criar post, agenda)
+    if (!result && owner.isOwner(ctx)) {
+      result = await owner.confirmPending(ctx, text);
+      if (!result) { const qi = owner.quickIntent(text); if (qi) result = await owner.perform(ctx, qi.nome, qi.args, text); }
+    }
     if (!result) result = safetyRules(text, ctx);
     // JARVIS: resposta a uma pergunta que o Cérebro fez (top 3 / reflexão) e habilidades (skills/*/SKILL.md)
     if (!result) result = consumeAwaiting(ctx, text);
@@ -337,6 +349,6 @@ export async function converse(ctx, body, { requestId, createDecision, channel =
   if (typeof body.confirm_analysis !== 'string') vault.logTurn(ctx, { channel, user: String(body.message || ''), reply: result.reply });
   if (channel === 'whatsapp' && ['navigate', 'navigate_offer'].includes(result.intent)) { result.intent = 'answer'; delete result.navigate_to; }
   audit({ orgId: ctx.orgId, actorType: 'user', actorId: ctx.userId, event: 'conversation.turn', objectType: result.decision_id ? 'decision' : null, objectId: result.decision_id || null, requestId, metadata: { intent: result.intent, ai_tokens: result.tokens || 0, channel, ai: result.via || null } });
-  const { tokens: _t, via: _v, instrucoes: _i, rephrase: _r, suggestions: _s, notes: _n, meeting: _m, ...pub } = result;
+  const { tokens: _t, via: _v, instrucoes: _i, rephrase: _r, suggestions: _s, notes: _n, meeting: _m, owner_action: _o, awaiting: _w, ...pub } = result;
   return pub;
 }

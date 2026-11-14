@@ -57,3 +57,19 @@ test('aprovação continua bloqueada antes da IA; falha da IA cai na resposta do
   await say(c, 'como estão os sistemas?');
   assert.equal(S.calls.length, m, 'LORLER_CONVERSA_IA=proprio desliga');
 });
+
+test('dono: a IA recebe o catálogo de ações e, ao escolher uma, o Cérebro executa', async () => {
+  delete process.env.LORLER_CONVERSA_IA;
+  const c = await login('brain.owner@lorler.test');
+  S.answer = { reply: 'Vou ver as conversas.', intent: 'action', action: { nome: 'atendimento_conversas', args: {} } };
+  const prev = masterHooks.fetch;
+  masterHooks.fetch = async (url, opts = {}) => {
+    const p = new URL(url).pathname.replace('/api/master', '');
+    if (p === '/atendimento/conversas') return new Response(JSON.stringify({ items: [{ id: 'c1', salon_name: 'Barbearia Top', product: 'orbi', handler: 'ia', last_body: 'como emito nota?' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return prev(url, opts);
+  };
+  const r = await say(c, 'tem algum cliente falando com o suporte agora?');
+  masterHooks.fetch = prev;
+  assert.ok(S.calls.at(-1).acoes.some((a) => a.nome === 'empresa_bloquear'));
+  assert.match(r.body.reply, /Barbearia Top \(ORBI\)/);
+});
