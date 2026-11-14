@@ -1,0 +1,21 @@
+# Voz local do Cérebro (JARVIS): ouvidos (Whisper) + boca (Kokoro) na própria VPS.
+# Os dois só escutam em 127.0.0.1 (ninguém de fora acessa); o Cérebro conversa com eles por dentro da máquina.
+name: lorler-voz
+services:
+  ouvidos:                 # Whisper (speaches / faster-whisper) — /v1/audio/transcriptions
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    restart: unless-stopped
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      - WHISPER__TTL=-1            # mantém o modelo carregado (responde rápido)
+      - WHISPER__COMPUTE_TYPE=int8 # leve para CPU
+    volumes:
+      - hf-cache:/home/ubuntu/.cache/huggingface/hub
+    mem_limit: 2500m
+  boca:                    # Kokoro-82M (Kokoro-FastAPI) — /v1/audio/speech, vozes pt-BR: pf_dora, pm_alex, pm_santa
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    restart: unless-stopped
+    ports: ["127.0.0.1:8880:8880"]
+    mem_limit: 3000m
+volumes:
+  hf-cache:

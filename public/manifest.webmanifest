@@ -1,0 +1,20 @@
+{
+  "name": "Cérebro LORLER — JARVIS",
+  "short_name": "Cérebro",
+  "description": "Seu JARVIS: fale, direcione, lembre. Central de decisões da LORLER.",
+  "lang": "pt-BR",
+  "start_url": "/#/jarvis",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#050b18",
+  "theme_color": "#050b18",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Falar com o Cérebro", "url": "/#/jarvis", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Aprovações", "url": "/#/aprovacoes", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

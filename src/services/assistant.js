@@ -12,7 +12,11 @@ export const TONES = {
 };
 export const AVATAR_STYLES = ['nucleo', 'rosto', 'holograma', 'onda'];
 export const OPENAI_VOICES = ['marin', 'cedar', 'coral', 'nova', 'shimmer', 'sage', 'ballad', 'alloy', 'ash', 'echo', 'fable', 'onyx', 'verse'];
-export const VOICE_ENGINES = ['browser', 'openai', 'elevenlabs'];
+export const VOICE_ENGINES = ['browser', 'local', 'openai', 'elevenlabs'];
+// Voz local (Kokoro na própria VPS): o texto não sai do servidor. Vozes em português do Brasil do Kokoro-82M.
+export const LOCAL_VOICES = { pf_dora: 'Dora (feminina)', pm_alex: 'Alex (masculina)', pm_santa: 'Santa (masculina, grave)' };
+// Reconhecimento de fala: 'local' = Whisper na VPS (o áudio não sai do servidor); 'navegador' = serviço de voz do navegador.
+export const STT_ENGINES = ['local', 'navegador'];
 // Estilo da fala (vozes neurais seguem a instrução; a voz do aparelho ajusta ritmo e tom).
 export const VOICE_STYLES = {
   natural: 'natural e espontâneo, como numa conversa entre colegas, com pausas e entonação de quem está pensando junto',
@@ -29,7 +33,7 @@ export const DEFAULTS = Object.freeze({
   call_me: '',
   persona_notes: '',
   avatar: { style: 'nucleo', color: '#22d3ee', color2: '#a855f7', image: '' },
-  voice: { engine: 'browser', browser_voice: '', openai_voice: 'marin', eleven_voice: '', eleven_name: '', style: 'natural', rate: 1, pitch: 1, fillers: true, barge_in: true },
+  voice: { engine: 'browser', browser_voice: '', openai_voice: 'marin', eleven_voice: '', eleven_name: '', local_voice: 'pf_dora', stt: 'local', style: 'natural', rate: 1, pitch: 1, fillers: true, barge_in: true },
   whatsapp_chat: true,
 });
 
@@ -58,6 +62,8 @@ function merge(raw, base = DEFAULTS) {
       openai_voice: OPENAI_VOICES.includes(v.openai_voice) ? v.openai_voice : (B.voice.openai_voice || DEFAULTS.voice.openai_voice),
       eleven_voice: /^[A-Za-z0-9]{8,40}$/.test(String(v.eleven_voice || '')) ? v.eleven_voice : '',
       eleven_name: clampText(String(v.eleven_name || '').replace(/[<>\r\n]/g, ' ').trim(), 60),
+      local_voice: Object.hasOwn(LOCAL_VOICES, v.local_voice) ? v.local_voice : (B.voice.local_voice || 'pf_dora'),
+      stt: STT_ENGINES.includes(v.stt) ? v.stt : (B.voice.stt || 'local'),
       style: Object.hasOwn(VOICE_STYLES, v.style) ? v.style : (B.voice.style || 'natural'),
       rate: num(v.rate, 0.6, 1.6, B.voice.rate),
       pitch: num(v.pitch, 0.5, 1.5, B.voice.pitch),

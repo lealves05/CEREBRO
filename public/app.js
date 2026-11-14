@@ -1,7 +1,8 @@
 import { createBrain } from './neural.js?v=20261109a';
 import { createAvatar } from './avatar.js?v=20261011a';
-import { speechText, sentences, FILLERS } from './speech.js?v=20261111a';
+import { speechText, sentences, FILLERS } from './speech.js?v=20261114a';
 import { sparkline, ring, animateRings, radar, statusBar, flowChart, countUp, sysColor, projectionChart } from './hud.js?v=20261007a';
+import { viewJarvis, createPtt, bindSpacebar } from './jarvis.js?v=20261114b';
 // LORLER · Central de Decisões — painel HUD (SPA sem dependências)
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -135,7 +136,7 @@ const voice = {
   cfg() { return state.assistant?.settings?.voice || { engine: 'browser', rate: 1, pitch: 1, style: 'natural', fillers: true, barge_in: true }; },
   emit(ev) { this.subs.forEach((f) => { try { f(ev); } catch { /* */ } }); },
   setSpeaking(on) { if (this.speaking === on) return; this.speaking = on; this.onSpeaking?.(on); this.emit({ speaking: on }); },
-  neural() { const c = this.cfg(); const e = state.assistant?.tts_engines || {}; return (c.engine === 'openai' && (e.openai || state.assistant?.tts_available)) || (c.engine === 'elevenlabs' && e.elevenlabs && c.eleven_voice) ? c.engine : null; },
+  neural() { const c = this.cfg(); const e = state.assistant?.tts_engines || {}; return (c.engine === 'openai' && (e.openai || state.assistant?.tts_available)) || (c.engine === 'elevenlabs' && e.elevenlabs && c.eleven_voice) || (c.engine === 'local' && e.local) ? c.engine : null; },
   canSpeak() { return this.enabled && (!!this.synth || !!this.neural()); },
   clean(text) { return speechText(String(text || '').slice(0, 1400)); },
   stop(keep = false) {
@@ -189,7 +190,7 @@ const voice = {
   ttsFetch(text) {
     const c = this.cfg(); const engine = this.neural();
     return fetch('/api/tts', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrf || '' },
-      body: JSON.stringify({ text, engine, voice: engine === 'elevenlabs' ? c.eleven_voice : c.openai_voice, rate: c.rate, style: c.style }) })
+      body: JSON.stringify({ text, engine, voice: engine === 'elevenlabs' ? c.eleven_voice : engine === 'local' ? c.local_voice : c.openai_voice, rate: c.rate, style: c.style }) })
       .then((res) => { if (!res.ok) throw new Error('tts'); return res.blob(); });
   },
   playBlob(blob, my) {
@@ -228,10 +229,10 @@ const voice = {
   },
   // "deixa eu ver…" pré-gerado na voz neural (fica na memória da aba)
   fillerCache: new Map(),
-  cachedFiller(text) { const k = `${this.neural()}|${this.cfg().openai_voice}|${this.cfg().eleven_voice}|${text}`; return this.fillerCache.get(k) || null; },
+  cachedFiller(text) { const k = `${this.neural()}|${this.cfg().openai_voice}|${this.cfg().eleven_voice}|${this.cfg().local_voice}|${text}`; return this.fillerCache.get(k) || null; },
   warmFillers() {
     if (!this.neural() || !this.cfg().fillers) return;
-    for (const t of FILLERS.slice(0, 3)) { const k = `${this.neural()}|${this.cfg().openai_voice}|${this.cfg().eleven_voice}|${t}`; if (!this.fillerCache.has(k)) this.fillerCache.set(k, this.ttsFetch(t).catch(() => { this.fillerCache.delete(k); throw new Error('tts'); })); }
+    for (const t of FILLERS.slice(0, 3)) { const k = `${this.neural()}|${this.cfg().openai_voice}|${this.cfg().eleven_voice}|${this.cfg().local_voice}|${t}`; if (!this.fillerCache.has(k)) this.fillerCache.set(k, this.ttsFetch(t).catch(() => { this.fillerCache.delete(k); throw new Error('tts'); })); }
   },
   /** Fala uma resposta. Promise resolve quando termina (ou é interrompida). */
   speak(text, { force = false } = {}) {
@@ -345,6 +346,8 @@ document.addEventListener('pointerdown', () => { if (handsFree.on && (handsFree.
 
 // ---------------- Inicialização ----------------
 async function init() {
+  // app instalável no celular (PWA): tela cheia, ícone na tela inicial e abertura rápida
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
   try {
     const setup = await api('GET', '/api/setup/status');
     if (setup.needs_setup) return renderSetup();
@@ -385,7 +388,7 @@ function renderLogin() {
       state.csrf = state.me.csrf;
       const h = new Date().getHours();
       voice.speak(`${h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'}, ${state.me.user.name.split(' ')[0]}. Central de decisões LORLER online.`);
-      if (!location.hash || location.hash === '#/') location.hash = '#/nucleo';
+      if (!location.hash || location.hash === '#/') location.hash = '#/jarvis';
       renderShell();
     } catch (err) { $('#lerr').textContent = err.message; }
   };
@@ -410,6 +413,7 @@ function renderSetup() {
 
 // ---------------- Shell ----------------
 const NAV = [
+  ['g', 'JARVIS'], ['jarvis', 'HUD JARVIS', 'brainmark'],
   ['g', 'Decidir'], ['nucleo', 'Comando', 'command'], ['decisoes', 'Sala de Decisão', 'scale'], ['aprovacoes', 'Aprovações', 'shield'], ['radar', 'Radar dos sistemas', 'radar'], ['whatsapp', 'WhatsApp', 'whatsapp'],
   ['g', 'Cérebro'], ['nova', 'Nova análise', 'plus'], ['agentes', 'Agentes', 'agents'], ['conhecimento', 'Conhecimento', 'book'], ['assistente', 'Assistente', 'face'],
   ['g', 'Configuração'], ['integracoes', 'Integrações', 'plug'], ['regras', 'Regras e limites', 'rules'], ['auditoria', 'Histórico e auditoria', 'audit'], ['admin', 'Administração', 'admin'],
@@ -447,8 +451,12 @@ function renderShell() {
   window.onhashchange = route;
   route();
   refreshPending();
+  state.ptt ||= createPtt({ api, state, voice, handsFree, toast });
+  bindSpacebar(state.ptt);
   loadAssistant().then(mountDock);
 }
+
+function jarvisDeps() { return { api, state, voice, handsFree, toast, fail, svg, modal, ptt: state.ptt }; }
 
 async function loadAssistant() {
   try { state.assistant = await api('GET', '/api/assistant'); } catch { state.assistant = { settings: { name: 'Cérebro', voice: { engine: 'browser', rate: 1, pitch: 1, style: 'natural', fillers: true, barge_in: true }, avatar: {} }, can_edit: false, tts_available: false, tts_engines: {} }; }
@@ -468,14 +476,15 @@ function route() {
   state.cleanup.forEach((f) => f()); state.cleanup = [];
   $('#sb')?.classList.remove('open');
   if (window.innerWidth < 760) { $('#dock-panel')?.classList.add('hidden'); $('#dock')?.classList.remove('open'); }
-  const [hashPath, hashQuery = ''] = (location.hash || '#/nucleo').split('?');
+  const [hashPath, hashQuery = ''] = (location.hash || '#/jarvis').split('?');
   state.query = new URLSearchParams(hashQuery);
-  const [, key = 'nucleo', arg] = hashPath.split('/');
+  const [, key = 'jarvis', arg] = hashPath.split('/');
   $$('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.k === key || (key === 'decisao' && a.dataset.k === 'decisoes')));
-  const views = { nucleo: viewCore, radar: viewRadar, whatsapp: viewWhatsApp, nova: viewNew, decisoes: viewDecisions, decisao: viewDecision, aprovacoes: viewApprovals, agentes: viewAgents, conhecimento: viewKnowledge, integracoes: viewIntegrations, regras: viewRules, auditoria: viewAudit, assistente: viewAssistant, admin: viewAdmin };
+  const views = { jarvis: async (cc) => { const off = await viewJarvis(cc, jarvisDeps()); state.cleanup.push(off); }, nucleo: viewCore, radar: viewRadar, whatsapp: viewWhatsApp, nova: viewNew, decisoes: viewDecisions, decisao: viewDecision, aprovacoes: viewApprovals, agentes: viewAgents, conhecimento: viewKnowledge, integracoes: viewIntegrations, regras: viewRules, auditoria: viewAudit, assistente: viewAssistant, admin: viewAdmin };
   const titles = { decisao: 'Sala de Decisão' };
   $('#vtitle').textContent = titles[key] || NAV.find((n) => n[0] === key)?.[1] || '';
   const c = $('#content');
+  document.body.classList.toggle('jv-mode', key === 'jarvis');
   c.innerHTML = '<div class="empty"><b>Carregando</b>Consultando o núcleo…</div>';
   (views[key] || viewCore)(c, arg).catch((e) => { fail(e); c.innerHTML = `<div class="panel empty"><b>Falha ao carregar</b>${esc(e.message)}</div>`; });
 }
@@ -1696,6 +1705,7 @@ function mountDock() {
   $('#dock-voice', dock).onclick = (e) => { const on = voice.toggle(); e.currentTarget.innerHTML = svg(on ? 'speaker' : 'mute'); const vt = $('#vtoggle'); if (vt) vt.innerHTML = svg(on ? 'speaker' : 'mute'); };
   const typing = (on) => { dockAvatar?.setThinking(on); $('#dock-msgs .typing')?.remove(); if (on) { msgs.insertAdjacentHTML('beforeend', '<div class="dmsg bot typing"><i></i><i></i><i></i></div>'); msgs.scrollTop = msgs.scrollHeight; } };
   const send = async (text, { confirm = null, spoken = false } = {}) => {
+    let out = null;
     if (!confirm) state.chat.push({ role: 'user', text });
     render(); typing(true);
     const done = spoken ? voice.think() : null;
@@ -1713,8 +1723,22 @@ function mountDock() {
       render();
       voice.speak(r.reply);
       if (r.intent === 'navigate' && r.navigate_to) location.hash = `#/${r.navigate_to}`;
+      out = r;
     } catch (e) { if (done) await done(); typing(false); state.chat.push({ role: 'assistant', text: `Não consegui responder agora: ${e.message}` }); render(); }
+    return out;
   };
+  // o HUD e o "apertar para falar" usam esta mesma conversa (histórico, voz e confirmação de análise)
+  state.dockSend = (text, { spoken = false, quiet = false } = {}) => {
+    if (state.chatPending && /^(sim|pode|abre|abrir|confirmo|ok|isso|claro|bora|manda)/i.test(norm(text)) && text.length < 30) { const p = state.chatPending; state.chatPending = null; state.chat.push({ role: 'user', text }); state.chat.forEach((m) => { if (m.action?.includes('data-dock')) delete m.action; }); return send(null, { confirm: p, spoken }); }
+    state.chatPending = null;
+    if (!quiet && panel.classList.contains('hidden')) open(true);
+    if (spoken && !voice.enabled) { voice.toggle(); const vb = $('#dock-voice', dock); if (vb) vb.innerHTML = svg('speaker'); }
+    return send(text, { spoken });
+  };
+  if (state.ptt) {
+    state.ptt.defaultText = (t) => state.dockSend(t, { spoken: true });
+    state.ptt.defaultState = (st2) => { const el = $('#dock-state'); if (el) el.textContent = st2 === 'ouvindo' ? 'ouvindo… (solte a barra de espaço)' : st2 === 'transcrevendo' ? 'entendendo…' : 'online'; };
+  }
   msgs.onclick = (e) => {
     const b = e.target.closest('[data-dock]'); if (!b) return;
     const q = state.chatPending; state.chatPending = null;
@@ -1748,7 +1772,7 @@ function mountDock() {
     if (!q) { state.chat.push({ role: 'assistant', text: 'Oi! Estou ouvindo.' }); render(); voice.speak('Oi! Estou ouvindo.'); return; }
     if (state.chatPending && /^(sim|pode|abre|abrir|confirmo|ok|isso|claro|bora|manda)/i.test(norm(q)) && q.length < 30) { const p = state.chatPending; state.chatPending = null; state.chat.push({ role: 'user', text: q }); state.chat.forEach((m) => { if (m.action?.includes('data-dock')) delete m.action; }); return send(null, { confirm: p, spoken: true }); }
     if (state.chatPending && /^(nao|agora nao|cancela|deixa)/i.test(norm(q))) { state.chatPending = null; state.chat.push({ role: 'user', text: q }, { role: 'assistant', text: 'Tranquilo. Se mudar de ideia é só falar.' }); render(); voice.speak('Tranquilo. Se mudar de ideia é só falar.'); return; }
-    if (/^(encerrar|tchau|obrigad|pode parar|chega)/.test(norm(q)) && !named) { handsFree.until = 0; voice.speak('Certo, estou aqui quando precisar.'); return; }
+    if (/^(encerrar(?! o dia)|tchau|obrigad|pode parar|chega)/.test(norm(q)) && !named) { handsFree.until = 0; voice.speak('Certo, estou aqui quando precisar.'); return; }
     state.chatPending = null; send(q, { spoken: true });
   };
   hfState(handsFree.status());
@@ -1784,7 +1808,7 @@ function resizeImage(file, max = 256) {
 async function viewAssistant(c) {
   const a = await loadAssistant();
   const s = structuredClone(a.settings);
-  const te = a.tts_engines || { openai: !!a.tts_available, elevenlabs: false };
+  const te = a.tts_engines || { openai: !!a.tts_available, elevenlabs: false, local: false };
   const ro = !a.can_edit;
   const dis = ro ? 'disabled' : '';
   c.innerHTML = `<div class="grid g3 assistant-page">
@@ -1818,11 +1842,14 @@ async function viewAssistant(c) {
       <p class="small muted">Para a conversa soar como gente: a fala sai frase a frase com pausas naturais, valores e datas são ditos por extenso, e ele pode dizer “deixa eu ver…” enquanto pensa.</p>
       <div class="row">
         <label class="chip ${s.voice.engine === 'browser' ? 'on' : ''}"><input type="radio" name="engine" value="browser" ${s.voice.engine === 'browser' ? 'checked' : ''} ${dis}>Voz do aparelho (grátis)</label>
+        <label class="chip ${s.voice.engine === 'local' ? 'on' : ''}" title="${te.local ? 'Kokoro rodando na VPS: o texto não sai do servidor' : 'Instale a voz local na VPS (VPS-MENU › I)'}"><input type="radio" name="engine" value="local" ${s.voice.engine === 'local' ? 'checked' : ''} ${dis || (te.local ? '' : 'disabled')}>Voz local Kokoro (privada)${te.local ? '' : ' (não instalada)'}</label>
         <label class="chip ${s.voice.engine === 'openai' ? 'on' : ''}" title="${te.openai ? '' : 'Precisa da chave da OpenAI configurada no servidor'}"><input type="radio" name="engine" value="openai" ${s.voice.engine === 'openai' ? 'checked' : ''} ${dis || (te.openai ? '' : 'disabled')}>Neural OpenAI${te.openai ? '' : ' (sem chave)'}</label>
         <label class="chip ${s.voice.engine === 'elevenlabs' ? 'on' : ''}" title="${te.elevenlabs ? '' : 'Precisa da chave da ElevenLabs configurada no servidor'}"><input type="radio" name="engine" value="elevenlabs" ${s.voice.engine === 'elevenlabs' ? 'checked' : ''} ${dis || (te.elevenlabs ? '' : 'disabled')}>Ultra-realista ElevenLabs${te.elevenlabs ? '' : ' (sem chave)'}</label>
       </div>
       <div class="grid g2" style="margin-top:12px">
         <label class="field" id="f-bvoice">Voz do aparelho<select name="browser_voice" ${dis}><option value="">Automática (a mais natural em português)</option></select><span class="small muted" style="text-transform:none;letter-spacing:0">★ = voz natural. No <b>Microsoft Edge</b> aparecem as vozes naturais da Microsoft (Francisca, Thalita, Antonio), as mais humanas entre as gratuitas.</span></label>
+        <label class="field" id="f-lvoice">Voz local (Kokoro)<select name="local_voice" ${dis}>${Object.entries(a.options.local_voices || { pf_dora: 'Dora (feminina)' }).map(([k, l]) => `<option value="${k}" ${s.voice.local_voice === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        <label class="field" id="f-stt">Ouvir (reconhecimento da sua fala)<select name="stt" ${dis}><option value="local" ${s.voice.stt !== 'navegador' ? 'selected' : ''}>Whisper na VPS — privado${a.stt_local ? '' : ' (não instalado: usa o navegador)'}</option><option value="navegador" ${s.voice.stt === 'navegador' ? 'selected' : ''}>Serviço de voz do navegador</option></select><span class="small muted" style="text-transform:none;letter-spacing:0">Segure a <b>barra de espaço</b> (computador) ou o botão do microfone no HUD (celular) para falar.</span></label>
         <label class="field" id="f-ovoice">Voz OpenAI<select name="openai_voice" ${dis}>${a.options.openai_voices.map((v) => `<option value="${v}" ${s.voice.openai_voice === v ? 'selected' : ''}>${esc(VOICE_LABEL[v] || v)}</option>`).join('')}</select></label>
         <label class="field" id="f-evoice">Voz ElevenLabs<select name="eleven_voice" ${dis}><option value="">Carregando as vozes…</option></select><span class="small muted" style="text-transform:none;letter-spacing:0">Vozes da sua conta ElevenLabs; as marcadas com 🇧🇷 foram feitas para português.</span></label>
         <label class="field" style="align-self:start">Estilo da fala<select name="vstyle" ${dis}>${(a.options.voice_styles || Object.keys(VSTYLE_LABEL)).map((k) => `<option value="${k}" ${s.voice.style === k ? 'selected' : ''}>${esc(VSTYLE_LABEL[k] || k)}</option>`).join('')}</select></label>
@@ -1872,12 +1899,13 @@ async function viewAssistant(c) {
   const read = () => {
     s.name = f.name.value.trim() || 'Cérebro'; s.call_me = f.call_me.value.trim(); s.tone = f.tone.value; s.persona_notes = f.persona_notes.value;
     s.avatar.style = f.querySelector('input[name=style]:checked')?.value || s.avatar.style; s.avatar.color = f.color.value; s.avatar.color2 = f.color2.value;
-    s.voice.engine = f.querySelector('input[name=engine]:checked')?.value || 'browser'; s.voice.browser_voice = f.browser_voice.value; s.voice.openai_voice = f.openai_voice.value;
+    s.voice.engine = f.querySelector('input[name=engine]:checked')?.value || 'browser'; s.voice.browser_voice = f.browser_voice.value; s.voice.openai_voice = f.openai_voice.value; s.voice.local_voice = f.local_voice.value; s.voice.stt = f.stt.value;
     if (f.eleven_voice.value) { s.voice.eleven_voice = f.eleven_voice.value; s.voice.eleven_name = f.eleven_voice.selectedOptions[0]?.dataset.name || ''; }
     s.voice.style = f.vstyle.value; s.voice.fillers = f.fillers.checked; s.voice.barge_in = f.barge_in.checked;
     s.voice.rate = Number(f.rate.value); s.voice.pitch = Number(f.pitch.value); s.whatsapp_chat = f.whatsapp_chat.checked;
     $('#v-rate', c).textContent = `${s.voice.rate.toFixed(2)}×`; $('#v-pitch', c).textContent = s.voice.pitch.toFixed(2);
     $('#f-bvoice', c).style.display = s.voice.engine === 'browser' ? '' : 'none'; $('#f-pitch', c).style.display = s.voice.engine === 'browser' ? '' : 'none';
+    $('#f-lvoice', c).style.display = s.voice.engine === 'local' ? '' : 'none';
     $('#f-ovoice', c).style.display = s.voice.engine === 'openai' ? '' : 'none'; $('#f-evoice', c).style.display = s.voice.engine === 'elevenlabs' ? '' : 'none';
     $$('.av-style', c).forEach((l) => l.classList.toggle('on', l.querySelector('input').checked));
     $$('.chip', c).forEach((l) => { const i = l.querySelector('input'); if (i) l.classList.toggle('on', i.checked); });

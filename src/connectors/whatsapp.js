@@ -80,15 +80,57 @@ export function extractMessages(body) {
       const v = ch.value || {};
       if (c.phoneNumberId && v.metadata?.phone_number_id && v.metadata.phone_number_id !== c.phoneNumberId) continue;
       for (const m of v.messages || []) {
-        let text = null; let buttonId = null;
+        let text = null; let buttonId = null; let audio = null;
         if (m.type === 'text') text = m.text?.body || '';
+        else if (m.type === 'audio' && m.audio?.id) audio = { id: String(m.audio.id), mime: String(m.audio.mime_type || 'audio/ogg'), voice: !!m.audio.voice };
         else if (m.type === 'interactive') { buttonId = m.interactive?.button_reply?.id || m.interactive?.list_reply?.id || null; text = m.interactive?.button_reply?.title || ''; }
         else if (m.type === 'button') { buttonId = m.button?.payload || null; text = m.button?.text || ''; }
-        out.push({ id: m.id, from: String(m.from || '').replace(/\D/g, ''), timestamp: m.timestamp, text: clampText(text || '', 1000), buttonId });
+        out.push({ id: m.id, from: String(m.from || '').replace(/\D/g, ''), timestamp: m.timestamp, text: clampText(text || '', 1000), buttonId, ...(audio ? { audio } : {}) });
       }
     }
   }
   return out;
+}
+
+// ---------- áudio (notas de voz) ----------
+/** Baixa uma mídia recebida (nota de voz). Limite de 16 MB (o mesmo do WhatsApp para áudio). */
+export async function downloadMedia(mediaId) {
+  const c = waConfig();
+  if (!isConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
+  const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 20000);
+  try {
+    const meta = await waHooks.fetch(`https://graph.facebook.com/${c.apiVersion}/${encodeURIComponent(mediaId)}`, { headers: { Authorization: `Bearer ${c.token}` }, signal: ac.signal }).then((r) => r.json());
+    if (!meta?.url) throw new WhatsAppError('Mídia não encontrada.');
+    if (Number(meta.file_size || 0) > 16 * 1024 * 1024) throw new WhatsAppError('Áudio grande demais.');
+    const r = await waHooks.fetch(meta.url, { headers: { Authorization: `Bearer ${c.token}` }, signal: ac.signal });
+    if (!r.ok) throw new WhatsAppError(`Falha ao baixar o áudio (${r.status}).`);
+    return { buffer: Buffer.from(await r.arrayBuffer()), mime: meta.mime_type || 'audio/ogg' };
+  } catch (e) {
+    if (e instanceof WhatsAppError) throw e;
+    throw new WhatsAppError(e.name === 'AbortError' ? 'Tempo limite ao baixar o áudio.' : 'Falha de rede ao baixar o áudio.');
+  } finally { clearTimeout(timer); }
+}
+
+/** Sobe um áudio (ogg/opus) e manda como nota de voz. */
+export async function sendVoiceNote(to, buffer, mime = 'audio/ogg') {
+  const c = waConfig();
+  if (!isConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
+  const fd = new FormData();
+  fd.append('messaging_product', 'whatsapp');
+  fd.append('type', mime);
+  fd.append('file', new Blob([buffer], { type: mime }), 'resposta.ogg');
+  const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 20000);
+  let id;
+  try {
+    const r = await waHooks.fetch(`https://graph.facebook.com/${c.apiVersion}/${c.phoneNumberId}/media`, { method: 'POST', headers: { Authorization: `Bearer ${c.token}` }, body: fd, signal: ac.signal });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.id) throw new WhatsAppError(`WhatsApp: ${clampText(d.error?.message || `HTTP ${r.status}`, 200)}`);
+    id = d.id;
+  } catch (e) {
+    if (e instanceof WhatsAppError) throw e;
+    throw new WhatsAppError('Falha ao enviar o áudio.');
+  } finally { clearTimeout(timer); }
+  return send({ to, type: 'audio', audio: { id } });
 }
 
 export const maskNumber = (n) => (n ? `+${String(n).slice(0, 4)}•••••${String(n).slice(-2)}` : '—');

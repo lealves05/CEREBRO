@@ -26,6 +26,8 @@ import { bus } from '../orchestrator/events.js';
 import { converse } from '../services/conversation.js';
 import * as assistant from '../services/assistant.js';
 import { platform } from '../platform.js';
+import { registerJarvisRoutes, localTts } from './jarvis-routes.js';
+import * as voiceLocal from '../services/voice-local.js';
 
 export const router = new Router();
 export const setupState = { token: null };
@@ -197,7 +199,8 @@ router.post('/api/conversation', async ({ ctx, body, requestId }) => {
   if (hits.length >= 30) throw errors.limit('Muitas mensagens em pouco tempo. Aguarde alguns segundos.');
   hits.push(t); convoHits.set(key, hits);
   const user = q.get('SELECT display_name FROM users WHERE id = ?', ctx.userId);
-  const c = { ...ctx, firstName: String(user?.display_name || '').split(' ')[0] || 'operador' };
+  const org = q.get('SELECT timezone FROM organizations WHERE id = ?', ctx.orgId);
+  const c = { ...ctx, firstName: String(user?.display_name || '').split(' ')[0] || 'operador', timezone: org?.timezone || 'America/Sao_Paulo' };
   return converse(c, body || {}, { requestId, channel: body?.channel === 'text' ? 'text' : 'voice', createDecision: (b) => createDecision(ctx, b, requestId) });
 });
 
@@ -545,8 +548,8 @@ router.get('/api/master/preview', async ({ ctx, url }) => {
 // ---------------- Assistente: personalidade, avatar e voz ----------------
 router.get('/api/assistant', ({ ctx }) => ({
   settings: assistant.getSettings(ctx.orgId), can_edit: can(ctx, 'manage_agents'),
-  options: { tones: Object.keys(assistant.TONES), avatar_styles: assistant.AVATAR_STYLES, openai_voices: assistant.OPENAI_VOICES, voice_styles: Object.keys(assistant.VOICE_STYLES) },
-  tts_available: !!openaiKey(), tts_engines: { openai: !!openaiKey(), elevenlabs: !!elevenKey() },
+  options: { tones: Object.keys(assistant.TONES), avatar_styles: assistant.AVATAR_STYLES, openai_voices: assistant.OPENAI_VOICES, voice_styles: Object.keys(assistant.VOICE_STYLES), local_voices: assistant.LOCAL_VOICES, stt_engines: assistant.STT_ENGINES },
+  tts_available: !!openaiKey(), tts_engines: { openai: !!openaiKey(), elevenlabs: !!elevenKey(), local: voiceLocal.ttsConfigured() }, stt_local: voiceLocal.sttConfigured(),
 }));
 router.put('/api/assistant', ({ ctx, body, requestId }) => {
   requirePerm(ctx, 'manage_agents');
@@ -585,7 +588,15 @@ router.get('/api/tts/voices', async ({ ctx }) => {
 router.post('/api/tts', async ({ ctx, body, res }) => {
   requirePerm(ctx, 'view');
   const s = assistant.getSettings(ctx.orgId);
-  const engine = ['openai', 'elevenlabs'].includes(body?.engine) ? body.engine : (s.voice.engine === 'elevenlabs' ? 'elevenlabs' : 'openai');
+  const engine = ['openai', 'elevenlabs', 'local'].includes(body?.engine) ? body.engine : (['elevenlabs', 'local'].includes(s.voice.engine) ? s.voice.engine : 'openai');
+  if (engine === 'local') {
+    const text = String(body?.text || '').trim();
+    if (!text || text.length > 800) throw errors.invalid('Texto para voz deve ter de 1 a 800 caracteres.');
+    const buf = await localTts(s, { ...body, text });
+    res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store' });
+    res.end(buf);
+    return null;
+  }
   const key = engine === 'elevenlabs' ? elevenKey() : openaiKey();
   if (!key) throw errors.invalid(engine === 'elevenlabs' ? 'Voz ElevenLabs indisponível: configure ELEVENLABS_API_KEY no servidor.' : 'Voz neural indisponível: configure OPENAI_API_KEY no servidor.');
   const text = String(body?.text || '').trim();
@@ -827,3 +838,6 @@ export function handleSse(req, res, ctx, runId) {
 }
 
 export { validatePasswordStrength };
+
+// ---------------- JARVIS (HUD, cofre, rotina, habilidades, voz local) ----------------
+registerJarvisRoutes(router);

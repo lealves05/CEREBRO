@@ -14,7 +14,7 @@ import { startInboxWatcher } from './services/inbox.js';
 import { getProvider } from './ai/provider.js';
 
 const PUBLIC = path.join(ROOT, 'public');
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 
 function serveStatic(req, res, urlPath) {
   let rel = decodeURIComponent(urlPath === '/' ? '/index.html' : urlPath);
@@ -22,7 +22,7 @@ function serveStatic(req, res, urlPath) {
   if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
   fs.stat(file, (err, st) => {
     const target = !err && st.isFile() ? file : path.join(PUBLIC, 'index.html'); // SPA
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(target)] || 'application/octet-stream', 'Cache-Control': target.endsWith('.html') ? 'no-store' : 'no-cache' });
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(target)] || 'application/octet-stream', 'Cache-Control': target.endsWith('.html') || target.endsWith('sw.js') ? 'no-store' : 'no-cache', ...(target.endsWith('sw.js') ? { 'Service-Worker-Allowed': '/' } : {}) });
     fs.createReadStream(target).pipe(res);
   });
 }

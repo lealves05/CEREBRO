@@ -45,7 +45,7 @@ test('fala natural: reais, porcentagens, datas, horas e nomes dos sistemas por e
 test('configuração de voz: motores, estilos e opções saneados', async () => {
   const c = await login('voz.owner@lorler.test');
   const g = await c.call('GET', '/api/assistant');
-  assert.deepEqual(g.body.tts_engines, { openai: true, elevenlabs: true });
+  assert.deepEqual(g.body.tts_engines, { openai: true, elevenlabs: true, local: false });
   assert.ok(g.body.options.openai_voices.includes('marin'));
   assert.ok(g.body.options.voice_styles.includes('calorosa'));
   assert.equal(g.body.settings.voice.fillers, true);

@@ -9,6 +9,10 @@ e registra uma proposta de ação que só é executada depois do **motor de pol�
 Interface no estilo HUD holográfico: núcleo animado, agentes em órbita trocando mensagens ao vivo,
 comando por voz e respostas faladas em português (Chrome ou Edge).
 
+> **Novo (nov/2026): formato JARVIS** — HUD de tela única, cofre de memória em markdown (Obsidian), habilidades
+> `skills/*/SKILL.md`, rotina do dia, apertar-para-falar e voz 100% local (Whisper + Kokoro na VPS), app no celular e
+> notas de voz no WhatsApp. Veja [`docs/JARVIS.md`](docs/JARVIS.md).
+
 > Implementado a partir de `Cerebro_Multiagente_LORLER_Passo_a_Passo_Vibecode.md`.
 > Veja o que foi verificado e o que está pendente em [`docs/RELATORIO-VERIFICACAO.md`](docs/RELATORIO-VERIFICACAO.md).
 

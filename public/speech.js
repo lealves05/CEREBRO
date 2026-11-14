@@ -64,7 +64,7 @@ const FIX = [
 /** Converte o texto para o jeito falado. */
 export function speechText(text) {
   let t = String(text || '');
-  t = t.replace(/\[SEM SUPORTE\]/g, '')
+  t = t.replace(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g, '$1').replace(/\[SEM SUPORTE\]/g, '')
     .replace(/https?:\/\/\S+/g, 'o link na tela')
     .replace(/\b([a-z0-9-]+)\.com\.br\b/gi, '$1 ponto com ponto bê érre')
     .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '')

@@ -10,9 +10,17 @@ import * as wa from '../connectors/whatsapp.js';
 import { approve, reject, requestRevision } from './actions.js';
 import { getSettings, addWaTurn, waHistory, pendingAnalysis, forgetWaChat } from './assistant.js';
 import { buildBriefing, briefingText, radarForCtx, sendBriefingTo } from './briefing.js';
+import * as voiceLocal from './voice-local.js';
 
 /** Ritmo "humano" das respostas da conversa (substituível nos testes). */
 export const waChatHooks = { delay: (ms) => new Promise((r) => setTimeout(r, ms)) };
+
+// resposta em áudio: ligada por padrão (Rotina › "responder áudio com áudio")
+function wantsVoiceReply(ctx) { const r = q.get('SELECT voice_reply FROM jarvis_routine WHERE user_id = ?', ctx.userId); return !r || !!r.voice_reply; }
+/** Texto para ser falado: sem emojis, sem *negrito*, sem links. */
+function spokenText(t) {
+  return String(t || '').replace(/https?:\/\/\S+/g, '').replace(/[*_~`]/g, '').replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+}
 
 const CODE_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const genCode = (n = 6) => Array.from(crypto.randomBytes(n), (b) => CODE_ALPHA[b % CODE_ALPHA.length]).join('');
@@ -192,7 +200,7 @@ const HELP = 'Comandos LORLER:\n• *RESUMO* — briefing do dia\n• *RADAR* �
 export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t), defer = null } = {}) {
   // Deduplicação por id da mensagem (reentregas do webhook)
   try { insert('inbound_events', { id: uuid(), source: 'whatsapp', event_id: msg.id, received_at: now() }); } catch { return { duplicate: true }; }
-  const text = String(msg.text || '').trim();
+  let text = String(msg.text || '').trim();
   const say = (t) => reply(msg.from, t).catch(() => {});
 
   // Vínculo do número: "LORLER 123456"
@@ -212,6 +220,24 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
   if (!link) return { ignored: 'unknown_number' }; // números desconhecidos não recebem resposta
   const ctx = ctxFor(link);
   if (!ctx) { await say('Seu acesso à organização está inativo.'); return { ignored: 'inactive' }; }
+
+  // Nota de voz: vira texto pelo Whisper da VPS (o áudio não sai do servidor) e segue como se tivesse sido digitada.
+  // Roda depois de devolver 200 para a Meta (baixar + transcrever pode levar alguns segundos).
+  if (msg.audio && !text) {
+    const work = (async () => {
+      try { await wa.markRead(msg.id, true); } catch { /* cosmético */ }
+      if (!voiceLocal.sttConfigured()) { await say('Recebi seu áudio 🎧, mas o reconhecimento de voz ainda não está instalado no servidor. Pode me mandar por escrito?'); return { audio: 'stt_off' }; }
+      let heard = '';
+      try {
+        const media = await (waChatHooks.download || wa.downloadMedia)(msg.audio.id);
+        heard = (await voiceLocal.transcribe(media.buffer, media.mime || msg.audio.mime)).trim();
+      } catch (e) { console.warn(JSON.stringify({ level: 'warn', event: 'whatsapp.audio_failed', message: String(e.message).slice(0, 160) })); }
+      if (!heard) { await say('Não consegui entender o áudio. Pode repetir ou mandar por escrito?'); return { audio: 'empty' }; }
+      return handleInbound({ ...msg, id: `${msg.id}:voz`, text: heard, audio: undefined, voice: true }, { reply, defer: null });
+    })();
+    if (defer) { defer(work); return { audio: 'deferred' }; }
+    return work;
+  }
 
   // Confirmação de PIN pendente
   const waiting = q.get("SELECT * FROM whatsapp_requests WHERE user_id = ? AND status = 'awaiting_pin' AND pending_until > ? ORDER BY created_at DESC LIMIT 1", ctx.userId, now());
@@ -368,6 +394,15 @@ async function chatTurn(ctx, msg, text, say) {
   addWaTurn(c, 'assistant', r.reply, r.intent === 'propose_analysis' && r.analysis_question ? { analysis_question: r.analysis_question } : null);
   if (r.intent === 'analysis_opened' && r.decision_id) {
     try { insert('wa_followups', { decision_id: r.decision_id, organization_id: c.orgId, user_id: c.userId, wa_id: msg.from, created_at: now(), notified_at: null }); } catch { /* */ }
+  }
+  // pergunta por áudio → resposta por áudio (voz local Kokoro), como uma pessoa faria; se falhar, vai por escrito
+  if (msg.voice && voiceLocal.ttsConfigured() && wantsVoiceReply(c)) {
+    try {
+      const s = getSettings(c.orgId);
+      const audio = await voiceLocal.synthesize(spokenText(r.reply), { voice: s.voice.local_voice, speed: s.voice.rate || 1, format: 'opus' });
+      await (waChatHooks.sendVoice || wa.sendVoiceNote)(msg.from, audio, 'audio/ogg');
+      return { chat: r.intent, voice: true };
+    } catch (e) { console.warn(JSON.stringify({ level: 'warn', event: 'whatsapp.voice_reply_failed', message: String(e.message).slice(0, 160) })); }
   }
   // ritmo de quem digita: respostas instantâneas parecem robô
   const parts = splitMessage(r.reply);
