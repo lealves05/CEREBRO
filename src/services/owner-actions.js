@@ -8,6 +8,9 @@ import * as mkt from './marketing.js';
 import * as meeting from './meeting.js';
 import { runners as skillRunners } from './skills.js';
 import { audit } from './audit.js';
+import { q } from '../db.js';
+import * as wa from '../connectors/whatsapp.js';
+import * as promo from './promo-image.js';
 
 export const hooks = { master: (...a) => masterCall(...a) };
 const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -19,6 +22,7 @@ export const isOwner = (ctx) => ctx?.role === 'owner';
 export const CATALOG = [
   { nome: 'redes_status', descricao: 'confere a conexão com as redes sociais e se o publicador da VPS está pronto para publicar' },
   { nome: 'criar_post', descricao: 'cria um post (texto e mídia da biblioteca) e deixa pronto para aprovar', args: 'tema, redes[instagram|facebook|tiktok|linkedin], quando (ex.: "amanhã 18h"), sistema (ORBI, TORVEN...)' },
+  { nome: 'gerar_imagem', descricao: 'gera uma imagem/arte promocional de um sistema (feed 1080x1350), manda a imagem e deixa um post pronto com ela', args: 'sistema, tema, titulo (opcional), apoio (opcional), redes[]' },
   { nome: 'agenda_posts', descricao: 'lista os posts e ações agendados e o que espera aprovação' },
   { nome: 'reuniao_marketing', descricao: 'começa a reunião de marketing (plano de posts, anúncio e ações comerciais)' },
   { nome: 'empresas', descricao: 'lista empresas clientes da Área Master', args: 'filtro (teste|inadimplentes|vencendo|ativas|bloqueadas), sistema, termo' },
@@ -41,6 +45,10 @@ export function quickIntent(text) {
   const redes = /\b(redes?( sociais)?|instagram|insta|facebook|face|tiktok|linkedin|publicador)\b/.test(f);
   const querPost = /\b(cri|ger|faz|mont|escrev|prepar)\w* (um |uma |o |a )?(post|publicacao)/.test(f);
   if (redes && /\b(conex|conect|disponiv|pront|funcion|ligad|status|situacao|verific|confer|ja (da|posso|podemos)|consegu)/.test(f)) return { nome: querPost ? 'redes_e_post' : 'redes_status', args: {} };
+  if (/\b(ger|cri|faz|mont|desenh|produz|prepar)\w*\b.*\b(imagem|imagens|arte|banner|card|flyer|criativo|figura|foto promocional)\b/.test(f) || /\b(imagem|arte|banner|flyer|criativo) (promocional|de divulgacao|pra divulgar|para divulgar)\b/.test(f)) {
+    const sis = (f.match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1];
+    return { nome: 'gerar_imagem', args: sis ? { sistema: sis.toUpperCase() } : {} };
+  }
   const pergunta = /^(qual|quais|quando|como|onde|por ?que|o que|quanto)\b/.test(f);
   if (!pergunta && (/\b(ger|cri|faz|mont|escrev|prepar|agend|program|post|public)\w*\b.*\b(post|publicacao|story|stories|reels?|carrossel)\b/.test(f) || /\b(posta|postar|publica|publicar)\b.*\b(instagram|facebook|tiktok|linkedin|redes)\b/.test(f))) return { nome: 'criar_post', args: {} };
   if (/\b(o que (esta|ta) agendado|posts agendados|agenda (de|dos) posts|proximos posts|o que vai sair)\b/.test(f)) return { nome: 'agenda_posts', args: {} };
@@ -90,6 +98,21 @@ async function run(ctx, nome, a = {}, text = '') {
       const status = await run(ctx, 'redes_status', {});
       const post = await run(ctx, 'criar_post', {}, text);
       return `${status.replace(/ Quer que eu gere um post agora\?$/, '')}\n\n${post}`;
+    }
+    case 'gerar_imagem': {
+      const sistema = String(a.sistema || (fold(text).match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1] || 'ORBI').toUpperCase();
+      const img = await promo.generate({ sistema, tema: a.tema || '', titulo: a.titulo || '', apoio: a.apoio || '', cta: a.cta || '' });
+      if (!img) throw new Error('Não consegui montar a imagem agora (a biblioteca de mídia não respondeu). Tenta de novo em instantes.');
+      const saved = mkt.saveMedia(ctx, img.buffer, img.mime, `${sistema.toLowerCase()}-promo.${img.mime === 'image/png' ? 'png' : 'jpg'}`);
+      const nets = Array.isArray(a.redes) && a.redes.length ? a.redes.filter((n) => ['instagram', 'facebook', 'tiktok', 'linkedin'].includes(n)) : ['instagram', 'facebook'];
+      const dr = mkt.draftTexts({ product: sistema, topic: a.tema || '' });
+      const when = (() => { const d = new Date(Date.now() + 86400000); return mkt.atLocal(d.toISOString().slice(0, 10), '18:30'); })();
+      const it = mkt.createItem(ctx, { kind: 'post', title: `${sistema}: ${img.titulo}`.slice(0, 120), networks: nets, text: dr.text, texts: dr.texts, media_url: saved.url, media_kind: 'imagem', format: '4x5', scheduled_at: when, link: `https://${sistema.toLowerCase()}.lorler.com.br` }, { source: `conversa:${ctx.channel || 'voz'}` });
+      const sub = mkt.submit(ctx, { item_id: it.id });
+      const link = q.get("SELECT wa_id FROM whatsapp_links WHERE organization_id = ? AND user_id = ? AND status = 'verified'", ctx.orgId, ctx.userId);
+      let sent = false;
+      if (ctx.channel === 'whatsapp' && link?.wa_id) { try { await wa.sendImage(link.wa_id, img.buffer, img.mime, `Arte do ${sistema}${img.how === 'biblioteca' ? ' (da biblioteca)' : ''}`, saved.url); sent = true; } catch { /* manda o link abaixo */ } }
+      return `${sent ? 'Mandei a arte aqui em cima. ' : `Arte pronta: ${saved.url} `}Deixei o post com ela para ${mkt.fmtWhen(when)} no ${nets.map((n) => mkt.NETWORK_LABEL[n]).join(' e ')}. Para publicar, responda *APROVAR ${sub.code}* e o PIN. Quer outra versão? Diga, por exemplo, "faz outra com o título …".`;
     }
     case 'agenda_posts': return (await skillRunners.marketing(ctx, 'o que está agendado')).reply;
     case 'reuniao_marketing': return (await meeting.handle(ctx, 'reunião de marketing', ctx.channel || 'whatsapp'))?.reply || 'Vamos lá: qual é o objetivo da campanha?';

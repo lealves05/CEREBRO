@@ -25,6 +25,8 @@ export const viaMaster = () => !cloudConfigured() && process.env.LORLER_WA_VIA_M
 export const isConfigured = () => cloudConfigured() || viaMaster();
 export const transport = () => (cloudConfigured() ? 'meta' : viaMaster() ? 'master' : null);
 
+const recentSends = new Map();
+export const resetRecentSends = () => recentSends.clear();
 /** Converte o envio para texto simples e manda pelo Master (só para o número pessoal do dono, o Master confere). */
 async function sendViaMaster(payload) {
   let text = '';
@@ -35,6 +37,11 @@ async function sendViaMaster(payload) {
   } else if (payload.type === 'template') text = (payload.template?.components?.[0]?.parameters || []).map((p) => p.text).join(' · ');
   else return null;
   if (!text.trim()) return null;
+  // trava contra repetição: a mesma mensagem para o mesmo número em menos de 2 minutos sai uma vez só
+  const k = `${payload.to}|${text.trim()}`; const nowMs = Date.now();
+  for (const [kk, t] of recentSends) if (nowMs - t > 120_000) recentSends.delete(kk);
+  if (recentSends.has(k)) return 'repetida';
+  recentSends.set(k, nowMs);
   const r = await masterCall('/atendimento/whatsapp/cerebro/enviar', { method: 'POST', body: { to: payload.to, text: clampText(text, 4000) } })
     .catch((e) => { throw new WhatsAppError(`WhatsApp (Master): ${clampText(e.message, 200)}`); });
   return r?.id || 'master';
@@ -70,6 +77,17 @@ async function send(payload, { raw = false } = {}) {
 export const markRead = (messageId, typing = true) => send({ status: 'read', message_id: messageId, ...(typing ? { typing_indicator: { type: 'text' } } : {}) }, { raw: true });
 
 export const sendText = (to, body) => send({ to, type: 'text', text: { preview_url: false, body: clampText(body, 4000) } });
+
+/** Envia uma imagem (arte gerada, prévia de post). Pelo Master vai o arquivo; pela Cloud API vai o link público. */
+export async function sendImage(to, buffer, mime = 'image/png', caption = '', publicUrl = '') {
+  if (!cloudConfigured() && viaMaster()) {
+    const r = await masterCall('/atendimento/whatsapp/cerebro/enviar-imagem', { method: 'POST', body: { to, image_b64: Buffer.from(buffer).toString('base64'), mime, caption: clampText(caption, 1000) } })
+      .catch((e) => { throw new WhatsAppError(`WhatsApp (Master): ${clampText(e.message, 200)}`); });
+    return r?.id || 'master';
+  }
+  if (!publicUrl) throw new WhatsAppError('Sem endereço público para a imagem.');
+  return send({ to, type: 'image', image: { link: publicUrl, caption: clampText(caption, 1000) } });
+}
 
 export const sendButtons = (to, body, buttons, footer) => send({
   to, type: 'interactive',

@@ -57,4 +57,17 @@ test('leitura do Master sai na hora', async () => {
   assert.match(r.reply, /Oficina do Zé \(TORVEN\) — em teste, Essencial, teste até 20\/11\/2026/);
 });
 
+test('imagem promocional: gera a arte, guarda e deixa o post pronto com código', async () => {
+  assert.equal(owner.quickIntent('vc consegue gerar uma imagem prmocional do orbi?')?.nome, 'gerar_imagem');
+  assert.equal(owner.quickIntent('faz uma arte do torven')?.args.sistema, 'TORVEN');
+  const promo = await import('../src/services/promo-image.js');
+  promo.imgHooks.fetch = async () => new Response('x', { status: 404 });
+  const svg = promo.buildSvg({ sistema: 'ORBI', titulo: 'Sua agenda mora no WhatsApp?', apoio: 'Tudo num lugar só', cta: 'Teste grátis' });
+  assert.match(svg, /<svg[^>]+1080/); assert.match(svg, /Sua agenda/);
+  const r = await owner.perform({ ...ctx, channel: 'voz' }, 'gerar_imagem', { sistema: 'ORBI' });
+  if (/Não consegui montar/.test(r.reply)) return; // sem rsvg-convert e sem internet neste ambiente
+  assert.match(r.reply, /Arte pronta: https?:\/\/.+\/api\/public\/midia\/[a-f0-9]{32}\.png/);
+  assert.match(r.reply, /APROVAR M[A-Z0-9]{5}/);
+});
+
 test('quem não é dono não usa o atalho', () => { assert.equal(owner.isOwner({ ...ctx, role: 'analyst' }), false); });
