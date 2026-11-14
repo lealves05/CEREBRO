@@ -19,6 +19,7 @@ import { SYSTEM_CODES } from '../seed.js';
 import { isConfigured as masterConfigured, supportBrain } from '../connectors/master.js';
 import * as vault from './vault.js';
 import { runSkill, consumeAwaiting, publicSkills } from './skills.js';
+import * as meeting from './meeting.js';
 
 const SYSTEMS = SYSTEM_CODES;
 const PAGES = {
@@ -309,7 +310,9 @@ export async function converse(ctx, body, { requestId, createDecision, channel =
     const text = String(body.message || '').trim();
     if (!text) throw errors.invalid('Fale ou escreva uma mensagem.');
     if (text.length > (channel === 'whatsapp' ? 1000 : 600)) throw errors.invalid('Mensagem longa demais para a conversa (até 600 caracteres). Use "Nova análise" para perguntas longas.');
-    result = safetyRules(text, ctx);
+    // reunião de marketing aberta (ou pedida): ela conduz; "aprovar" ali só envia para aprovação com código + PIN/senha
+    if (!/^(tchau|ate (logo|mais))\b/.test(fold(text))) { try { result = await meeting.handle(ctx, text, channel); } catch (e) { result = { reply: `Não consegui seguir a reunião: ${e.message}`, intent: 'answer' }; } }
+    if (!result) result = safetyRules(text, ctx);
     // JARVIS: resposta a uma pergunta que o Cérebro fez (top 3 / reflexão) e habilidades (skills/*/SKILL.md)
     if (!result) result = consumeAwaiting(ctx, text);
     let skill = null;
@@ -334,6 +337,6 @@ export async function converse(ctx, body, { requestId, createDecision, channel =
   if (typeof body.confirm_analysis !== 'string') vault.logTurn(ctx, { channel, user: String(body.message || ''), reply: result.reply });
   if (channel === 'whatsapp' && ['navigate', 'navigate_offer'].includes(result.intent)) { result.intent = 'answer'; delete result.navigate_to; }
   audit({ orgId: ctx.orgId, actorType: 'user', actorId: ctx.userId, event: 'conversation.turn', objectType: result.decision_id ? 'decision' : null, objectId: result.decision_id || null, requestId, metadata: { intent: result.intent, ai_tokens: result.tokens || 0, channel, ai: result.via || null } });
-  const { tokens: _t, via: _v, instrucoes: _i, rephrase: _r, suggestions: _s, notes: _n, ...pub } = result;
+  const { tokens: _t, via: _v, instrucoes: _i, rephrase: _r, suggestions: _s, notes: _n, meeting: _m, ...pub } = result;
   return pub;
 }

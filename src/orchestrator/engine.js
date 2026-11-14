@@ -13,6 +13,7 @@ import * as master from '../connectors/master.js';
 import { processOutbox, processChatFollowups } from '../services/whatsapp-approvals.js';
 import { processBriefings } from '../services/briefing.js';
 import { processRoutine } from '../services/routine.js';
+import { processMarketing } from '../services/whatsapp-approvals.js';
 import { activePolicy } from '../services/policy.js';
 import { reserveTokens, settleTokens, runTokensUsed } from '../services/budget.js';
 import { createProposal, execute } from '../services/actions.js';
@@ -561,6 +562,7 @@ export async function housekeeping() {
   await processChatFollowups().catch((e) => console.error('[whatsapp]', e.message));
   await processBriefings().catch((e) => console.error('[briefing]', e.message));
   await processRoutine().catch((e) => console.error('[rotina]', e.message));
+  await processMarketing().catch((e) => console.error('[marketing]', e.message));
   q.run("UPDATE action_proposals SET status = 'expired' WHERE status = 'awaiting_approval' AND expires_at IS NOT NULL AND expires_at <= ?", now());
   q.run(`UPDATE decisions SET status = 'expired' WHERE status = 'awaiting_approval' AND id IN (SELECT decision_id FROM action_proposals WHERE status = 'expired')
          AND id NOT IN (SELECT decision_id FROM action_proposals WHERE status = 'awaiting_approval')`);

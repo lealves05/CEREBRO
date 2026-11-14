@@ -10,6 +10,7 @@ import { securityHeaders } from './http/http.js';
 import { setupState } from './api/routes.js';
 import { dispatch } from './app.js';
 import { startWorker } from './orchestrator/engine.js';
+import { startMasterWhatsApp } from './services/master-whatsapp.js';
 import { startInboxWatcher } from './services/inbox.js';
 import { getProvider } from './ai/provider.js';
 
@@ -51,6 +52,7 @@ export function boot() {
     console.log(`Ambiente: ${config.env} | Provedor de IA: ${getProvider().name}${getProvider().name === 'demo' ? ' (DEMONSTRAÇÃO — sem IA real)' : ''} | Dados demo: ${config.demoMode ? 'habilitados' : 'desabilitados'}`);
   });
   if (config.workerInProcess) startWorker();
+  startMasterWhatsApp(); // WhatsApp da LORLER conectado no Master por QR Code (número pessoal do dono)
   startInboxWatcher(); // importa data/inbox/*.md (rotinas agendadas) para a base de conhecimento
   return server;
 }

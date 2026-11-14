@@ -1,0 +1,11 @@
+DROP INDEX IF EXISTS idx_support_chats;
+DROP TABLE IF EXISTS support_chats;
+DROP TABLE IF EXISTS support_agent;
+DROP INDEX IF EXISTS idx_mkt_meetings_user;
+DROP TABLE IF EXISTS mkt_meetings;
+DROP TABLE IF EXISTS mkt_media;
+DROP INDEX IF EXISTS idx_mkt_items_status;
+DROP INDEX IF EXISTS idx_mkt_items_org_when;
+DROP TABLE IF EXISTS mkt_items;
+DROP INDEX IF EXISTS idx_mkt_campaigns_org;
+DROP TABLE IF EXISTS mkt_campaigns;

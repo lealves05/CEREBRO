@@ -131,7 +131,7 @@ export async function viewJarvis(c, deps) {
       <section class="panel jv-cmds">
         <h3 class="jv-h">COMANDOS RÁPIDOS</h3>
         <div class="jv-cmd-list">
-          ${[['falar', 'falar', 'Segure para falar'], ['plano', 'plano de hoje', 'Seu top 3'], ['lembrar', 'lembrar', 'Guardar no cofre'], ['resumo', 'resumo da manhã', 'Caixa de entrada'], ['metricas', 'métricas', 'Seus números'], ['tendencias', 'tendências', 'O que está mudando'], ['cofre', 'abrir cofre', 'Memória'], ['encerrar', 'encerrar o dia', 'Reflexão']].map(([k, l, d]) => `<button class="jv-cmd" data-cmd="${k}"><span class="mono">&gt; ${esc(l)}</span><small>${esc(d)}</small></button>`).join('')}
+          ${[['falar', 'falar', 'Segure para falar'], ['plano', 'plano de hoje', 'Seu top 3'], ['lembrar', 'lembrar', 'Guardar no cofre'], ['resumo', 'resumo da manhã', 'Caixa de entrada'], ['metricas', 'métricas', 'Seus números'], ['tendencias', 'tendências', 'O que está mudando'], ['reuniao', 'reunião de marketing', 'Posts, anúncio e ações'], ['agenda', 'posts agendados', 'Instagram, Face, TikTok, LinkedIn'], ['cofre', 'abrir cofre', 'Memória'], ['encerrar', 'encerrar o dia', 'Reflexão']].map(([k, l, d]) => `<button class="jv-cmd" data-cmd="${k}"><span class="mono">&gt; ${esc(l)}</span><small>${esc(d)}</small></button>`).join('')}
         </div>
       </section>
       <section class="panel jv-core">
@@ -211,7 +211,7 @@ export async function viewJarvis(c, deps) {
       });
       return;
     }
-    const phrase = { plano: 'plano de hoje', resumo: 'resumo da manhã', metricas: 'métricas', tendencias: 'tendências', encerrar: 'encerrar o dia' }[k];
+    const phrase = { plano: 'plano de hoje', resumo: 'resumo da manhã', metricas: 'métricas', tendencias: 'tendências', encerrar: 'encerrar o dia', reuniao: 'reunião de marketing', agenda: 'o que está agendado?' }[k];
     if (phrase) ask(phrase);
   });
   $('#jv-vault-open', c).onclick = () => openVault(deps);

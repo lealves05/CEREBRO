@@ -10,6 +10,8 @@ import { buildAnalytics } from './analytics.js';
 import { buildBriefing } from './briefing.js';
 import * as vault from './vault.js';
 import { setAwaiting, getRoutine } from './routine.js';
+import * as mkt from './marketing.js';
+import { parseWhen, parseNetworks, parseProduct } from './meeting.js';
 
 const fold = vault.fold;
 const money = (v) => (v == null ? 'sem dado' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }));
@@ -24,6 +26,7 @@ const BUILTIN = [
   { nome: 'tendencias', titulo: 'Tendências', descricao: 'Analisa o que está mudando.', gatilhos: ['\\b(tendencias?|o que (esta|ta) mudando)\\b'] },
   { nome: 'plano-de-hoje', titulo: 'Plano de hoje', descricao: 'Escreve seu top 3.', gatilhos: ['\\b(plano de hoje|top ?3|minhas prioridades)\\b'] },
   { nome: 'cofre', titulo: 'Cofre (memória)', descricao: 'Lê e escreve memória.', gatilhos: ['^(lembr[ae](-se)?|anot[ae]|guard[ae])\\b', '\\bo que (voce )?(sabe|lembra) (sobre|de|do|da)\\b'] },
+  { nome: 'marketing', titulo: 'Marketing e redes sociais', descricao: 'Agenda posts e mostra o que está agendado.', gatilhos: ['\\b(agend|program)\\w* (um |uma )?(post|publicacao|story|reels?)\\b', '\\b(o que (esta|ta) agendado|posts agendados)\\b'] },
   { nome: 'encerrar-dia', titulo: 'Encerrar o dia', descricao: 'Fecha o dia e registra a reflexão.', gatilhos: ['\\b(encerrar o dia|fechar o dia|fim do dia)\\b', '^reflexao[:\\s]'] },
 ];
 export const SKILLS_DIR = process.env.LORLER_SKILLS_DIR || path.join(ROOT || '.', 'skills');
@@ -215,7 +218,28 @@ export function saveReflection(ctx, text) {
   vault.appendTo(ctx, { folder: 'diario', slug: day, title: diaryTitle(day), heading: 'Reflexão', text: `> ${vault.autoLink(clampText(String(text).trim(), 1500))}`, source: 'reflexao' });
 }
 
-const HANDLERS = { metricas, 'caixa-de-entrada': caixaDeEntrada, tendencias, 'plano-de-hoje': planoDeHoje, cofre, 'encerrar-dia': encerrarDia };
+async function marketing(ctx, text) {
+  const f = fold(text);
+  if (/\b(o que (esta|ta) agendado|posts agendados|agenda (de|dos) posts|proximos posts|calendario de posts|o que vai sair)\b/.test(f)) {
+    const up = mkt.upcoming(ctx, { days: 7 });
+    if (!up.length) return { reply: 'Não tem nada agendado para os próximos 7 dias. Quer marcar um post ou fazer a reunião de marketing da semana?' };
+    return { reply: `Nos próximos 7 dias: ${up.slice(0, 6).map((i) => `${mkt.fmtWhen(i.scheduled_at)}, ${i.kind === 'post' ? i.networks.map((n) => mkt.NETWORK_LABEL[n]).join(' e ') : mkt.KIND_LABEL[i.kind].toLowerCase()}, ${i.title} (${i.status_label})`).join('; ')}.${up.length > 6 ? ` E mais ${up.length - 6}.` : ''}` };
+  }
+  const nets = parseNetworks(f) || ['instagram', 'facebook'];
+  const w = parseWhen(text) || { date: null, time: null };
+  const product = (parseProduct(f) || '').replace('LORLER', '') || null;
+  const topic = (/\bsobre (.+?)(?:\s+(?:no|na|nos|para o|pro|amanha|hoje|as|às|dia)\b.*)?$/i.exec(text) || [])[1] || '';
+  const dr = mkt.draftTexts({ product, topic: topic.trim() });
+  const date = w.date || mkt.todayLocal(); const time = w.time || '18:30';
+  let when = mkt.atLocal(date, time); if (Date.parse(when) < Date.now() + 10 * 60_000) when = mkt.atLocal(date === mkt.todayLocal() ? (() => { const d = new Date(`${date}T12:00:00-03:00`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); })() : date, time);
+  const it = mkt.createItem(ctx, { kind: 'post', title: dr.title, networks: nets, text: dr.text, texts: dr.texts, media_url: dr.media_url, media_kind: dr.media_kind, format: dr.format, scheduled_at: when, link: product ? `https://${product.toLowerCase()}.lorler.com.br` : '' }, { source: `conversa:${ctx.channel || 'voz'}` });
+  const sub = mkt.submit(ctx, { item_id: it.id });
+  const falta = sub.item.issues.length ? ` Antes de aprovar: ${sub.item.issues.join(' ')}${/midia|imagem|video/i.test(sub.item.issues.join(' ')) ? ' Me manda a foto ou o vídeo que eu coloco.' : ''}` : '';
+  const como = ctx.channel === 'whatsapp' ? `Pra publicar, responda *APROVAR ${sub.code}* e o seu PIN.` : `Pra publicar, aprove no Marketing com a sua senha ou mande APROVAR ${sub.code} no WhatsApp.`;
+  return { reply: `Deixei pronto: ${dr.title}, ${mkt.fmtWhen(when)} no ${nets.map((n) => mkt.NETWORK_LABEL[n]).join(' e ')}.${dr.lib_id ? ' Usei o texto e o vídeo da nossa biblioteca.' : ''}${falta} ${como}`, item_id: it.id, approval_code: sub.code };
+}
+
+const HANDLERS = { metricas, 'caixa-de-entrada': caixaDeEntrada, tendencias, 'plano-de-hoje': planoDeHoje, cofre, marketing, 'encerrar-dia': encerrarDia };
 export const runners = HANDLERS;
 
 /** Resposta a uma pergunta que o Cérebro fez (top 3 da manhã, reflexão da noite). Devolve null se não for o caso. */

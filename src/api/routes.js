@@ -27,6 +27,7 @@ import { converse } from '../services/conversation.js';
 import * as assistant from '../services/assistant.js';
 import { platform } from '../platform.js';
 import { registerJarvisRoutes, localTts } from './jarvis-routes.js';
+import { registerMarketingRoutes } from './marketing-routes.js';
 import * as voiceLocal from '../services/voice-local.js';
 
 export const router = new Router();
@@ -841,3 +842,4 @@ export { validatePasswordStrength };
 
 // ---------------- JARVIS (HUD, cofre, rotina, habilidades, voz local) ----------------
 registerJarvisRoutes(router);
+registerMarketingRoutes(router);

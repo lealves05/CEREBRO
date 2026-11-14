@@ -9,9 +9,9 @@ import { q, now, json } from '../db.js';
 import { errors, clampText } from '../lib/util.js';
 import * as wa from '../connectors/whatsapp.js';
 
-export const SLOTS = ['manha', 'plano', 'metricas', 'encerrar'];
-export const SLOT_LABEL = { manha: 'Resumo da manhã', plano: 'Plano do dia (top 3)', metricas: 'Métricas monitoradas', encerrar: 'Encerrar o dia' };
-export const DEFAULT_TIMES = Object.freeze({ manha: '07:00', plano: '09:00', metricas: '14:00', encerrar: '19:00' });
+export const SLOTS = ['manha', 'plano', 'marketing', 'metricas', 'encerrar'];
+export const SLOT_LABEL = { manha: 'Resumo da manhã', plano: 'Plano do dia (top 3)', marketing: 'Reunião de marketing (segundas)', metricas: 'Métricas monitoradas', encerrar: 'Encerrar o dia' };
+export const DEFAULT_TIMES = Object.freeze({ manha: '07:00', plano: '09:00', marketing: '10:00', metricas: '14:00', encerrar: '19:00' });
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export function getRoutine(ctx) {
@@ -55,7 +55,8 @@ const toMin = (hhmm) => { const [h, m] = String(hhmm).split(':').map(Number); re
 /** Agenda de hoje para o HUD: etapas da rotina com horário e se já rodaram. */
 export function agendaToday(ctx, tz) {
   const r = publicRoutine(ctx); const lp = localParts(tz);
-  return SLOTS.map((k) => ({ slot: k, label: SLOT_LABEL[k], time: r.times[k], done: r.last_runs[k] === lp.date, upcoming: r.last_runs[k] !== lp.date && toMin(r.times[k]) >= lp.minutes }));
+  const monday = new Date(`${lp.date}T12:00:00-03:00`).getUTCDay() === 1;
+  return SLOTS.filter((k) => k !== 'marketing' || monday).map((k) => ({ slot: k, label: SLOT_LABEL[k], time: r.times[k], done: r.last_runs[k] === lp.date, upcoming: r.last_runs[k] !== lp.date && toMin(r.times[k]) >= lp.minutes }));
 }
 
 function ctxForUser(row) {
@@ -100,7 +101,9 @@ export async function processRoutine({ send = null } = {}) {
   for (const row of rows) {
     const ctx = ctxForUser(row); if (!ctx) continue;
     const lp = localParts(ctx.timezone); const times = { ...DEFAULT_TIMES, ...json(row.times, {}) }; const last = json(row.last_runs, {});
+    const monday = new Date(`${lp.date}T12:00:00-03:00`).getUTCDay() === 1;
     for (const slot of SLOTS) {
+      if (slot === 'marketing' && !monday) continue;
       const at = toMin(times[slot]);
       if (last[slot] === lp.date || lp.minutes < at || lp.minutes > at + 120) continue;
       // marca antes: nunca roda duas vezes no mesmo dia

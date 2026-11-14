@@ -918,3 +918,39 @@ body.jv-mode .dock-btn { display: none; }
 /* celular: o menu lateral vira gaveta em TODAS as telas (a regra de 248px acima deixava a tela espremida) */
 @media (max-width: 860px) { .shell { grid-template-columns: minmax(0, 1fr); } }
 .jv-ptt { white-space: nowrap; }
+
+/* ================= Marketing ================= */
+.mk { display: grid; gap: 14px; }
+.mk-head { display: grid; gap: 10px; }
+.mk-head h2 { margin: 0 0 4px; }
+.mk-pub { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line-strong); font-size: 13.5px; display: grid; gap: 4px; }
+.mk-pub.ok { border-color: rgba(74,222,128,.45); } .mk-pub.off { border-color: rgba(255,138,61,.5); }
+.mk-pend { display: grid; gap: 6px; }
+.mk-prow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; flex-wrap: wrap; }
+.mk-prow > div:first-child { display: grid; gap: 2px; }
+.mk-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.mk-day { min-height: 110px; border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: grid; align-content: start; gap: 4px; background: rgba(8,18,42,.4); }
+.mk-day.today { border-color: var(--cyan); box-shadow: inset 0 0 0 1px rgba(45,212,191,.25); }
+.mk-dh { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.mk-chip { display: flex; align-items: center; gap: 4px; width: 100%; text-align: left; font-size: 11.5px; padding: 4px 6px; border-radius: 7px; border: 1px solid var(--line-strong); background: rgba(45,212,191,.06); color: var(--text); cursor: pointer; overflow: hidden; }
+.mk-chip .mk-ct { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.mk-chip em { color: var(--orange); font-style: normal; }
+.mk-chip.k-anuncio { background: rgba(255,209,102,.08); } .mk-chip.k-acao { background: rgba(196,168,255,.08); }
+.mk-chip.s-publicado { border-color: rgba(74,222,128,.6); } .mk-chip.s-erro { border-color: rgba(255,122,122,.7); } .mk-chip.s-aguardando_aprovacao { border-style: dashed; border-color: var(--orange); } .mk-chip.s-cancelado { opacity: .4; text-decoration: line-through; }
+.mk-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex: none; }
+.mk-empty { color: #3c5070; font-size: 12px; }
+.mk-prev img, .mk-prev video { max-width: 220px; max-height: 260px; border-radius: 10px; margin-top: 6px; border: 1px solid var(--line); }
+.mk-lib { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; max-height: 320px; overflow: auto; margin-top: 6px; }
+.mk-li { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 9px; padding: 6px; }
+.mk-li img { width: 100%; border-radius: 6px; aspect-ratio: 4/5; object-fit: cover; }
+.mk-ad { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.mk-ad h3 { margin: 0 0 6px; font-size: 14px; }
+[data-cnt].over { color: var(--orange); }
+tr.clickable { cursor: pointer; } tr.clickable:hover td { background: rgba(45,212,191,.05); }
+@media (max-width: 860px) {
+  .mk-cal { grid-template-columns: 1fr; }
+  .mk-day { min-height: 0; grid-template-columns: 70px 1fr; align-items: start; }
+  .mk-day .mk-dh { flex-direction: column; grid-row: span 6; }
+  .mk-day:not(:has(.mk-chip)) { display: none; }
+  .mk-tbl th:nth-child(4), .mk-tbl td:nth-child(4) { display: none; }
+}

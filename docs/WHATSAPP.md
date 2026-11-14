@@ -55,3 +55,19 @@ validade, política e revalidação no executor).
 
 Referências: [Mensagens com botões](https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/interactive-reply-buttons-messages) ·
 [API de mensagens](https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-phone-number/message-api)
+
+## WhatsApp da LORLER pelo QR Code no Master (sem a Cloud API da Meta)
+
+Sem as variáveis da Cloud API (`WHATSAPP_PHONE_NUMBER_ID`, token, chave secreta), o Cérebro conversa pelo WhatsApp da
+LORLER conectado no **Master › Configurações › WhatsApp do suporte**, pelo QR Code (o mesmo "aparelho conectado" que as
+empresas usam nos sistemas):
+
+1. No Master, clique em **Gerar QR Code** e leia com o celular da LORLER (WhatsApp › Aparelhos conectados › Conectar um aparelho).
+2. Ainda no Master, cadastre **Meu número pessoal** (pede o 2FA). Os clientes que chamam o número da LORLER recebem só
+   respostas técnicas sobre os sistemas; o seu número pessoal vai para o Cérebro, sem restrição.
+3. No Cérebro, a Área Master precisa estar ligada (Integrações). O Cérebro busca as suas mensagens no Master com espera
+   longa (~15 s) e responde por ele. Na primeira mensagem, o número é vinculado sozinho ao proprietário (quando há um só);
+   se não, cadastre em **WhatsApp › Seu número pessoal**.
+
+Pelo Master as mensagens são só texto: botões viram "Responda: *APROVAR código* · *REJEITAR código* · *VER código*",
+e notas de voz/fotos não passam (use a Cloud API para isso). `LORLER_WA_VIA_MASTER=off` desliga a ponte.

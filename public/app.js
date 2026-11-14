@@ -2,7 +2,8 @@ import { createBrain } from './neural.js?v=20261109a';
 import { createAvatar } from './avatar.js?v=20261011a';
 import { speechText, sentences, FILLERS } from './speech.js?v=20261114a';
 import { sparkline, ring, animateRings, radar, statusBar, flowChart, countUp, sysColor, projectionChart } from './hud.js?v=20261007a';
-import { viewJarvis, createPtt, bindSpacebar } from './jarvis.js?v=20261114b';
+import { viewJarvis, createPtt, bindSpacebar } from './jarvis.js?v=20261114c';
+import { viewMarketing } from './marketing.js?v=20261114a';
 // LORLER · Central de Decisões — painel HUD (SPA sem dependências)
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -413,7 +414,7 @@ function renderSetup() {
 
 // ---------------- Shell ----------------
 const NAV = [
-  ['g', 'JARVIS'], ['jarvis', 'HUD JARVIS', 'brainmark'],
+  ['g', 'JARVIS'], ['jarvis', 'HUD JARVIS', 'brainmark'], ['marketing', 'Marketing e redes', 'insta'],
   ['g', 'Decidir'], ['nucleo', 'Comando', 'command'], ['decisoes', 'Sala de Decisão', 'scale'], ['aprovacoes', 'Aprovações', 'shield'], ['radar', 'Radar dos sistemas', 'radar'], ['whatsapp', 'WhatsApp', 'whatsapp'],
   ['g', 'Cérebro'], ['nova', 'Nova análise', 'plus'], ['agentes', 'Agentes', 'agents'], ['conhecimento', 'Conhecimento', 'book'], ['assistente', 'Assistente', 'face'],
   ['g', 'Configuração'], ['integracoes', 'Integrações', 'plug'], ['regras', 'Regras e limites', 'rules'], ['auditoria', 'Histórico e auditoria', 'audit'], ['admin', 'Administração', 'admin'],
@@ -480,7 +481,7 @@ function route() {
   state.query = new URLSearchParams(hashQuery);
   const [, key = 'jarvis', arg] = hashPath.split('/');
   $$('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.k === key || (key === 'decisao' && a.dataset.k === 'decisoes')));
-  const views = { jarvis: async (cc) => { const off = await viewJarvis(cc, jarvisDeps()); state.cleanup.push(off); }, nucleo: viewCore, radar: viewRadar, whatsapp: viewWhatsApp, nova: viewNew, decisoes: viewDecisions, decisao: viewDecision, aprovacoes: viewApprovals, agentes: viewAgents, conhecimento: viewKnowledge, integracoes: viewIntegrations, regras: viewRules, auditoria: viewAudit, assistente: viewAssistant, admin: viewAdmin };
+  const views = { jarvis: async (cc) => { const off = await viewJarvis(cc, jarvisDeps()); state.cleanup.push(off); }, marketing: (cc) => viewMarketing(cc, jarvisDeps()), nucleo: viewCore, radar: viewRadar, whatsapp: viewWhatsApp, nova: viewNew, decisoes: viewDecisions, decisao: viewDecision, aprovacoes: viewApprovals, agentes: viewAgents, conhecimento: viewKnowledge, integracoes: viewIntegrations, regras: viewRules, auditoria: viewAudit, assistente: viewAssistant, admin: viewAdmin };
   const titles = { decisao: 'Sala de Decisão' };
   $('#vtitle').textContent = titles[key] || NAV.find((n) => n[0] === key)?.[1] || '';
   const c = $('#content');
@@ -739,6 +740,7 @@ async function viewWhatsApp(c) {
       </div>
       <div class="grid">
         <div class="panel wa-panel" id="wa-card"></div>
+        <div class="panel" id="sa-card"><h2>Seu número pessoal e o suporte</h2><p class="small muted">Carregando…</p></div>
         <div class="panel"><h2>O que o Cérebro faz no WhatsApp</h2>
           <div class="toggle-row"><div><b>Briefing diário</b><small>Receita, riscos e decisões pendentes, todo dia no horário escolhido.</small>
             <div class="row" style="margin-top:8px"><label class="small muted" for="bf-time">Horário</label><input id="bf-time" type="time" value="${esc(l?.briefing_time || '07:30')}" style="max-width:130px" ${linked ? '' : 'disabled'}><button type="button" class="btn sm" id="bf-now" ${linked ? '' : 'disabled'}>Enviar agora</button></div></div>
@@ -753,6 +755,7 @@ async function viewWhatsApp(c) {
       </div>
     </div>`;
   renderWaCard($('#wa-card', c));
+  renderSupportCard($('#sa-card', c));
   const bd = $('#wa-bd', c); bd.scrollTop = bd.scrollHeight;
   const saveBf = async (patch) => { try { await api('POST', '/api/whatsapp/briefing', patch); toast(patch.enabled === false ? 'Briefing diário desligado.' : `Briefing diário às ${$('#bf-time', c).value}.`); } catch (e) { fail(e); route(); } };
   $('#bf-on', c).onchange = (e) => saveBf({ enabled: e.target.checked, time: $('#bf-time', c).value });
@@ -1636,6 +1639,32 @@ async function viewAdmin(c) {
       setTimeout(route, r.temporary_password ? 20000 : 1500);
     } catch (err) { fail(err); }
   };
+}
+
+// Número pessoal do dono (sem restrição, ele sabe que é você) + agente de suporte no número público da LORLER
+async function renderSupportCard(el) {
+  let sa;
+  try { sa = await api('GET', '/api/support-agent'); } catch (e) { el.innerHTML = `<h2>Seu número pessoal e o suporte</h2><p class="small muted">${esc(e.message)}</p>`; return; }
+  el.innerHTML = `<h2>Seu número pessoal e o suporte</h2>
+    <div class="field" style="margin-top:6px"><b>Meu número pessoal</b><small class="muted" style="display:block;margin:2px 0 6px">Neste número o Cérebro conversa com você sem restrição e sabe que é você (reuniões, marketing, números da empresa). Aprovações continuam pedindo o PIN.</small>
+      <div class="row"><input id="sa-num" placeholder="${sa.my_number ? `atual: ${esc(sa.my_number)}` : 'DDD + número, ex.: 19 99999-9999'}" inputmode="tel" style="max-width:240px"><button class="btn sm primary" id="sa-num-save">Salvar meu número</button>${sa.my_number ? `<span class="pill"><span class="dot"></span>${esc(sa.my_number)}</span>` : ''}</div></div>
+    ${sa.transport === 'master' ? `<p class="small" style="margin-top:10px"><span class="pill"><span class="dot"></span>WhatsApp da LORLER pelo Master (QR Code)</span> ${sa.bridge?.ok ? `ligado${sa.bridge.owner ? ` · número pessoal no Master: ${esc(sa.bridge.owner)}` : ''}` : sa.bridge?.error ? `sem resposta do Master: ${esc(sa.bridge.error)}` : 'aguardando o Master'}</p>
+    <p class="small muted">Os clientes que chamam o WhatsApp da LORLER falam com o agente de suporte do Master (só dúvidas técnicas dos sistemas). As mensagens do seu número pessoal chegam aqui, para mim. Conecte o aparelho e cadastre o seu número em <b>Master › Configurações › Canal de suporte</b>.</p>` : `
+    <div class="toggle-row" style="margin-top:12px"><div><b>Agente de suporte no número da LORLER${sa.business_number ? ` (+${esc(sa.business_number)})` : ''}</b><small>Quem não é você recebe só respostas técnicas sobre os sistemas. Pergunta fora disso recebe um "por aqui é só suporte técnico".</small></div>
+      <label class="switch"><input type="checkbox" id="sa-on" ${sa.enabled ? 'checked' : ''} aria-label="Agente de suporte"><span></span></label></div>
+    <div class="toggle-row"><div><b>Chamar atendente</b><small>Quando o cliente pedir uma pessoa, eu te aviso no seu número pessoal com a mensagem dele e o link para responder.</small></div>
+      <label class="switch"><input type="checkbox" id="sa-handoff" ${sa.handoff ? 'checked' : ''} aria-label="Chamar atendente"><span></span></label></div>
+    <div class="grid g2" style="margin-top:8px"><label class="field">Horário do atendimento humano<input id="sa-hours" value="${esc(sa.hours)}" placeholder="Seg a sex, 9h às 18h"></label>
+      <label class="field">Primeira mensagem (opcional)<input id="sa-greet" value="${esc(sa.greeting)}" placeholder="Olá! Aqui é o suporte técnico da LORLER…"></label></div>
+    <div class="row"><button class="btn sm" id="sa-save">Salvar suporte</button><span class="small muted">Últimas 24 h: ${sa.last24h?.pessoas || 0} pessoa(s), ${sa.last24h?.msgs || 0} mensagem(ns).</span></div>`}
+    ${sa.configured ? '' : '<p class="small muted">O WhatsApp ainda não está ligado: conecte o WhatsApp da LORLER por QR Code no Master › Configurações › Canal de suporte e ligue a Área Master aqui no Cérebro (Integrações).</p>'}`;
+  $('#sa-num-save', el).onclick = async () => { try { const r = await api('POST', '/api/support-agent/my-number', { number: $('#sa-num', el).value }); toast(`Pronto: ${r.number} é o seu número pessoal. Manda um "oi" pra mim por lá.`); renderSupportCard(el); renderWaCard($('#wa-card')); } catch (e) { fail(e); } };
+  const save = async (patch) => { try { await api('PUT', '/api/support-agent', patch); toast('Suporte salvo.'); } catch (e) { fail(e); } };
+  if ($('#sa-on', el)) {
+    $('#sa-on', el).onchange = (e) => save({ enabled: e.target.checked });
+    $('#sa-handoff', el).onchange = (e) => save({ handoff: e.target.checked });
+    $('#sa-save', el).onclick = () => save({ hours: $('#sa-hours', el).value, greeting: $('#sa-greet', el).value });
+  }
 }
 
 async function renderWaCard(el) {

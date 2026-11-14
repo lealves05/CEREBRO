@@ -19,8 +19,8 @@ after(() => { stopServer(); delete process.env.LORLER_STT_URL; delete process.en
 const ctx = { orgId: orgA, userId: ownerId, timezone: 'America/Sao_Paulo', productIds: null };
 const say = (c, message, channel = 'text') => c.call('POST', '/api/conversation', { message, channel });
 
-test('habilidades: as 6 do SKILL.md carregam e os gatilhos acionam a certa', () => {
-  assert.deepEqual(publicSkills().map((s) => s.nome), ['metricas', 'caixa-de-entrada', 'tendencias', 'plano-de-hoje', 'cofre', 'encerrar-dia']);
+test('habilidades: as 7 do SKILL.md carregam e os gatilhos acionam a certa', () => {
+  assert.deepEqual(publicSkills().map((s) => s.nome), ['metricas', 'caixa-de-entrada', 'tendencias', 'plano-de-hoje', 'cofre', 'marketing', 'encerrar-dia']);
   assert.ok(publicSkills().every((s) => s.arquivo?.startsWith('skills/')));
   assert.equal(matchSkill('Lembre que o reajuste do ORBI é em dezembro')?.nome, 'cofre');
   assert.equal(matchSkill('o que você sabe sobre o RUSTEN?')?.nome, 'cofre');
@@ -107,9 +107,9 @@ test('HUD: estado e sinais vitais; cofre exige sessão; viewer não vê o cofre 
   const c = await login('jarvis.owner@lorler.test');
   const st = await c.call('GET', '/api/jarvis/state');
   assert.equal(st.body.status.sistema, true);
-  assert.equal(st.body.agenda.length, 4);
+  assert.ok(st.body.agenda.length >= 4, 'rotina do dia (a reunião de marketing aparece às segundas)');
   assert.ok(st.body.vault.total >= 3);
-  assert.equal(st.body.skills.length, 6);
+  assert.equal(st.body.skills.length, 7);
   const v = await c.call('GET', '/api/jarvis/vitals');
   assert.ok(v.body.mem?.pct >= 0);
   const b = await startServer();

@@ -35,9 +35,9 @@ export async function dispatch(req, res, { rawBody = null } = {}) {
     if (req.method !== 'GET') {
       if (rawBody) {
         raw = rawBody;
-        if (raw.length > (route.opts.bigBody ? 1024 * 1024 : 256 * 1024)) throw new AppError(413, 'payload_too_large', 'Requisição grande demais.');
+        if (raw.length > (route.opts.maxBody || (route.opts.bigBody ? 1024 * 1024 : 256 * 1024))) throw new AppError(413, 'payload_too_large', 'Requisição grande demais.');
         if (raw.length) { try { body = JSON.parse(raw.toString('utf8')); } catch { throw new AppError(400, 'invalid_json', 'JSON inválido.'); } }
-      } else ({ body, raw } = await readJson(req, route.opts.bigBody ? 1024 * 1024 : undefined));
+      } else ({ body, raw } = await readJson(req, route.opts.maxBody || (route.opts.bigBody ? 1024 * 1024 : undefined)));
     }
     let ctx = null;
     if (!route.opts.public) {

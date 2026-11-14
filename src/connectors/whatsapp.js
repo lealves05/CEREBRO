@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import { secret } from '../config.js';
 import { safeEqual, clampText } from '../lib/util.js';
+import { call as masterCall, isConfigured as masterConfigured } from './master.js';
 
 export const waHooks = { fetch: (...a) => fetch(...a) };
 
@@ -17,12 +18,33 @@ export const waConfig = () => ({
   templateLang: process.env.WHATSAPP_TEMPLATE_LANG || 'pt_BR',
   briefingTemplate: process.env.WHATSAPP_TEMPLATE_BRIEFING || '',
 });
-export const isConfigured = () => { const c = waConfig(); return !!(c.phoneNumberId && c.token && c.appSecret && c.verifyToken); };
+export const cloudConfigured = () => { const c = waConfig(); return !!(c.phoneNumberId && c.token && c.appSecret && c.verifyToken); };
+// Sem a Cloud API da Meta, o Cérebro fala pelo WhatsApp da LORLER conectado no Master por QR Code (aparelho conectado):
+// o Master entrega as mensagens do número pessoal do dono e envia as respostas. LORLER_WA_VIA_MASTER=off desliga.
+export const viaMaster = () => !cloudConfigured() && process.env.LORLER_WA_VIA_MASTER !== 'off' && masterConfigured();
+export const isConfigured = () => cloudConfigured() || viaMaster();
+export const transport = () => (cloudConfigured() ? 'meta' : viaMaster() ? 'master' : null);
+
+/** Converte o envio para texto simples e manda pelo Master (só para o número pessoal do dono, o Master confere). */
+async function sendViaMaster(payload) {
+  let text = '';
+  if (payload.type === 'text') text = payload.text?.body || '';
+  else if (payload.type === 'interactive') {
+    const opts = (payload.interactive?.action?.buttons || []).map((b) => String(b.reply?.id || '').replace(':', ' ').toUpperCase()).filter(Boolean);
+    text = `${payload.interactive?.body?.text || ''}${opts.length ? `\n\nResponda: ${opts.map((o) => `*${o}*`).join(' · ')}` : ''}`;
+  } else if (payload.type === 'template') text = (payload.template?.components?.[0]?.parameters || []).map((p) => p.text).join(' · ');
+  else return null;
+  if (!text.trim()) return null;
+  const r = await masterCall('/atendimento/whatsapp/cerebro/enviar', { method: 'POST', body: { to: payload.to, text: clampText(text, 4000) } })
+    .catch((e) => { throw new WhatsAppError(`WhatsApp (Master): ${clampText(e.message, 200)}`); });
+  return r?.id || 'master';
+}
 
 export class WhatsAppError extends Error { constructor(message, code) { super(message); this.code = code; } }
 
 async function send(payload, { raw = false } = {}) {
   const c = waConfig();
+  if (!cloudConfigured() && viaMaster()) return raw ? null : sendViaMaster(payload); // "lido/digitando" não existe pelo Master
   if (!isConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
   const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 15000);
   try {
@@ -80,12 +102,13 @@ export function extractMessages(body) {
       const v = ch.value || {};
       if (c.phoneNumberId && v.metadata?.phone_number_id && v.metadata.phone_number_id !== c.phoneNumberId) continue;
       for (const m of v.messages || []) {
-        let text = null; let buttonId = null; let audio = null;
+        let text = null; let buttonId = null; let audio = null; let media = null;
         if (m.type === 'text') text = m.text?.body || '';
         else if (m.type === 'audio' && m.audio?.id) audio = { id: String(m.audio.id), mime: String(m.audio.mime_type || 'audio/ogg'), voice: !!m.audio.voice };
+        else if ((m.type === 'image' || m.type === 'video') && m[m.type]?.id) { media = { id: String(m[m.type].id), mime: String(m[m.type].mime_type || (m.type === 'image' ? 'image/jpeg' : 'video/mp4')), kind: m.type === 'image' ? 'imagem' : 'video' }; text = m[m.type].caption || ''; }
         else if (m.type === 'interactive') { buttonId = m.interactive?.button_reply?.id || m.interactive?.list_reply?.id || null; text = m.interactive?.button_reply?.title || ''; }
         else if (m.type === 'button') { buttonId = m.button?.payload || null; text = m.button?.text || ''; }
-        out.push({ id: m.id, from: String(m.from || '').replace(/\D/g, ''), timestamp: m.timestamp, text: clampText(text || '', 1000), buttonId, ...(audio ? { audio } : {}) });
+        out.push({ id: m.id, from: String(m.from || '').replace(/\D/g, ''), timestamp: m.timestamp, text: clampText(text || '', 1000), buttonId, ...(audio ? { audio } : {}), ...(media ? { media } : {}) });
       }
     }
   }
@@ -96,12 +119,12 @@ export function extractMessages(body) {
 /** Baixa uma mídia recebida (nota de voz). Limite de 16 MB (o mesmo do WhatsApp para áudio). */
 export async function downloadMedia(mediaId) {
   const c = waConfig();
-  if (!isConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
+  if (!cloudConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
   const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 20000);
   try {
     const meta = await waHooks.fetch(`https://graph.facebook.com/${c.apiVersion}/${encodeURIComponent(mediaId)}`, { headers: { Authorization: `Bearer ${c.token}` }, signal: ac.signal }).then((r) => r.json());
     if (!meta?.url) throw new WhatsAppError('Mídia não encontrada.');
-    if (Number(meta.file_size || 0) > 16 * 1024 * 1024) throw new WhatsAppError('Áudio grande demais.');
+    if (Number(meta.file_size || 0) > 16 * 1024 * 1024) throw new WhatsAppError('Arquivo grande demais (máx. 16 MB).');
     const r = await waHooks.fetch(meta.url, { headers: { Authorization: `Bearer ${c.token}` }, signal: ac.signal });
     if (!r.ok) throw new WhatsAppError(`Falha ao baixar o áudio (${r.status}).`);
     return { buffer: Buffer.from(await r.arrayBuffer()), mime: meta.mime_type || 'audio/ogg' };
@@ -114,7 +137,7 @@ export async function downloadMedia(mediaId) {
 /** Sobe um áudio (ogg/opus) e manda como nota de voz. */
 export async function sendVoiceNote(to, buffer, mime = 'audio/ogg') {
   const c = waConfig();
-  if (!isConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
+  if (!cloudConfigured()) throw new WhatsAppError('WhatsApp não configurado no servidor.');
   const fd = new FormData();
   fd.append('messaging_product', 'whatsapp');
   fd.append('type', mime);
