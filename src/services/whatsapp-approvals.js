@@ -55,7 +55,7 @@ export function myLink(ctx) {
   const l = q.get('SELECT * FROM whatsapp_links WHERE organization_id = ? AND user_id = ?', ctx.orgId, ctx.userId);
   const c = wa.waConfig();
   return {
-    configured: wa.isConfigured(), business_number: c.businessNumber || null, template_configured: !!c.template,
+    configured: wa.isConfigured(), transport: wa.transport(), business_number: c.businessNumber || null, template_configured: !!c.template,
     link: l ? { status: l.status, number: wa.maskNumber(l.wa_id), has_pin: !!l.pin_hash, notify: !!l.notify, verified_at: l.verified_at, pin_locked_until: l.pin_locked_until, briefing: !!l.briefing, briefing_time: l.briefing_time || '07:30', briefing_last: l.briefing_last || null } : null,
     briefing_template_configured: !!c.briefingTemplate,
   };
