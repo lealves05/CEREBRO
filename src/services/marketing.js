@@ -71,6 +71,7 @@ export function publisherStatus() {
 function hashtagsOf(t) { return (String(t || '').match(/#[\p{L}\p{N}_]+/gu) || []).length; }
 export function textFor(item, net) { const t = (item.texts || {})[net]; return t && t.trim() ? t : item.text; }
 
+const PAST_ISSUE = 'O horário já passou.';
 /** Problemas que impedem publicar em cada rede (o painel mostra; a aprovação recusa). */
 export function issues(item) {
   const out = [];
@@ -78,7 +79,7 @@ export function issues(item) {
   const nets = item.networks || [];
   if (!nets.length) out.push('Escolha ao menos uma rede.');
   if (!item.scheduled_at) out.push('Defina a data e a hora.');
-  else if (Date.parse(item.scheduled_at) < Date.now() - 5 * 60_000) out.push('O horário já passou.');
+  else if (Date.parse(item.scheduled_at) < Date.now() - 5 * 60_000) out.push(PAST_ISSUE);
   for (const n of nets) {
     const t = textFor(item, n) || '';
     if (!t.trim() && n !== 'tiktok') out.push(`${NETWORK_LABEL[n]}: falta o texto.`);
@@ -300,10 +301,13 @@ export function submit(ctx, { item_id = null, campaign_id = null }) {
 export function approve(ctx, { item_id = null, campaign_id = null, via = 'painel', publishNow = false }) {
   const targets = campaign_id ? getCampaign(ctx, campaign_id).items.filter((i) => ['rascunho', 'aguardando_aprovacao', 'erro'].includes(i.status)) : [getItem(ctx, item_id)];
   if (!targets.length) throw errors.conflict('Nada para aprovar.');
-  const blocked = targets.filter((i) => i.issues.length);
-  const out = { queued: [], ready_ads: [], tasks: [], skipped: blocked.map((i) => ({ id: i.id, title: i.title, issues: i.issues })) };
+  // horário que passou enquanto esperava a aprovação não bloqueia: o post é reprogramado sozinho (sai na hora)
+  const blocking = (i) => i.issues.filter((x) => x !== PAST_ISSUE);
+  const blocked = targets.filter((i) => blocking(i).length);
+  const out = { queued: [], ready_ads: [], tasks: [], rescheduled: [], skipped: blocked.map((i) => ({ id: i.id, title: i.title, issues: blocking(i) })) };
   for (const it of targets) {
-    if (it.issues.length) continue;
+    if (blocking(it).length) continue;
+    if (it.issues.includes(PAST_ISSUE)) out.rescheduled.push(it.id);
     if (it.payload_hash && it.payload_hash !== hashItem(it)) { out.skipped.push({ id: it.id, title: it.title, issues: ['mudou depois do envio para aprovação'] }); continue; }
     // aprovado no WhatsApp = publica já (o publicador da VPS é acionado na hora); horário que já passou também sai na hora
     const nowIso = new Date().toISOString();

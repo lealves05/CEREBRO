@@ -488,7 +488,7 @@ const PIN_OK_MS = 30 * 60_000; // depois do PIN certo, 30 min aprovando sem pedi
 async function approveWaiting(ctx, say, { fresh = false } = {}) {
   const waits = q.all("SELECT 'c' AS t, id FROM mkt_campaigns WHERE organization_id = ? AND wa_pin_until > ? UNION ALL SELECT 'i' AS t, id FROM mkt_items WHERE organization_id = ? AND wa_pin_until > ?", ctx.orgId, now(), ctx.orgId, now());
   if (!waits.length) { await say('Não há nada esperando aprovação.'); return { approved: false }; }
-  const total = { queued: [], now: [], ready_ads: [], tasks: [], skipped: [] };
+  const total = { queued: [], now: [], ready_ads: [], tasks: [], skipped: [], rescheduled: [] };
   for (const wait of waits) {
     try {
       const publishNow = wait.t !== 'c' && !keepSchedule.get(wait.id);
@@ -511,7 +511,11 @@ async function approveWaiting(ctx, say, { fresh = false } = {}) {
     const pend = r.skipped.length ? `\n⚠️ Ficou de fora: ${r.skipped.map((x) => `${clampText(x.title, 40)} (${x.issues[0]})`).join('; ')}.` : '';
     const pub = mkt.publisherStatus();
     const igAviso = agora && pub.ajustes?.instagram ? '\n⚠️ Atenção: o publicador ainda não encontrou o Instagram. Facebook e as outras redes saem normalmente; o Instagram sai sozinho assim que o ajuste for feito (mande *COMO CORRIGIR O INSTAGRAM*).' : '';
-    await say(`✅ Aprovado. ${parts.join(', ') || 'Nada para executar'}.${pend}${igAviso}${fresh ? '\n(Nos próximos 30 min, APROVAR código não pede o PIN.)' : ''}`);
+    const reprog = (r.rescheduled || []).length ? `\n🕒 O horário marcado já tinha passado: reprogramei ${(r.rescheduled || []).length === 1 ? 'o post' : `${r.rescheduled.length} posts`} para sair agora.` : '';
+    const nada = !r.queued.length && !r.ready_ads.length && !r.tasks.length;
+    const fim = fresh ? '\n(Nos próximos 30 min, APROVAR código não pede o PIN.)' : '';
+    if (nada && r.skipped.length) { await say(`⚠️ Não deu para aprovar: ${r.skipped.map((x) => `${clampText(x.title, 40)} (${x.issues[0]})`).join('; ')}. Corrija no painel (Marketing) e mande APROVAR de novo.${fim}`); return { approved: false, marketing: r }; }
+    await say(`✅ Aprovado. ${parts.join(', ') || 'Nada para executar'}.${reprog}${pend}${igAviso}${fim}`);
     return { approved: true, marketing: r };
   } catch (e) { await say(`Não consegui aprovar: ${e.message}`); return { error: e.message }; }
 }

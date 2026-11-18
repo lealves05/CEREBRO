@@ -333,3 +333,24 @@ test('biblioteca de vídeos: lista com legendas, rodízio, post de vídeo (Reels
   const r = await owner.perform({ ...ctxA, channel: 'whatsapp' }, 'postar_video', { sistema: 'RUSTEN' }, 'posta o vídeo do rusten');
   assert.match(r.reply, /🎬 Post com o vídeo \*RUSTEN: Comanda\* pronto[\s\S]*APROVAR M[A-Z0-9]{5}/);
 });
+
+test('post aprovado depois do horário: reprograma sozinho e sai na hora (não fica de fora)', async () => {
+  const ctxA = { orgId: orgA, userId: ownerId, role: 'owner', productIds: null };
+  const replies = []; const reply = async (_to, t) => { replies.push(t); return 'ok'; };
+  const it = mkt.createItem(ctxA, { kind: 'post', title: 'Atrasado', networks: ['facebook'], text: 'Olá', media_url: 'https://cdn.jsdelivr.net/gh/x/y.jpg', media_kind: 'imagem', scheduled_at: new Date(Date.now() + 86400000).toISOString() }, { source: 'teste' });
+  const { code } = mkt.submit(ctxA, { item_id: it.id });
+  const past = new Date(Date.now() - 3 * 3600_000).toISOString();
+  q.run('UPDATE mkt_items SET scheduled_at = ? WHERE id = ?', past, it.id); // o horário passou enquanto esperava
+  q.run("UPDATE mkt_items SET payload_hash = NULL WHERE id = ?", it.id);
+  q.run('UPDATE whatsapp_links SET pin_ok_until = NULL');
+  await handleInbound(msg(`APROVAR ${code} 4071`), { reply });
+  assert.match(replies.at(-1), /✅ Aprovado\. publicando agora[\s\S]*reprogramei o post para sair agora/);
+  const got = mkt.getItem(ctxA, it.id);
+  assert.equal(got.status, 'na_fila');
+  assert.ok(Date.parse(got.scheduled_at) > Date.now() - 60_000);
+  // algo que realmente bloqueia: não diz "Aprovado"
+  const bad = mkt.createItem(ctxA, { kind: 'post', title: 'Sem texto', networks: ['facebook'], text: '', media_url: '', media_kind: '', scheduled_at: new Date(Date.now() + 86400000).toISOString() }, { source: 'teste' });
+  const c2 = mkt.submit(ctxA, { item_id: bad.id }).code;
+  await handleInbound(msg(`APROVAR ${c2}`), { reply });
+  assert.match(replies.at(-1), /Não deu para aprovar: Sem texto \(Facebook: falta o texto\.\)/);
+});

@@ -21,6 +21,7 @@ import * as vault from './vault.js';
 import { runSkill, consumeAwaiting, publicSkills } from './skills.js';
 import * as meeting from './meeting.js';
 import * as owner from './owner-actions.js';
+import * as mkt from './marketing.js';
 
 const SYSTEMS = SYSTEM_CODES;
 const PAGES = {
@@ -217,6 +218,17 @@ function buildContexto(ctx, snap) {
     habilidades: publicSkills().map((x) => `${x.titulo}: ${x.descricao}`),
     ...(ctx.memoria?.length ? { memoria_do_cofre: ctx.memoria } : {}),
   };
+  if (ctx.channel === 'whatsapp') {
+    try {
+      const pend = mkt.pendingApproval(ctx); const pub = mkt.publisherStatus(); const falhou = mkt.lastFailed(ctx);
+      contexto.publicacoes = {
+        como_aprovar: 'APROVAR código PIN (pode ser numa mensagem só) ou APROVAR código e o PIN em seguida; depois do PIN certo, 30 min sem pedir de novo; APROVAR TUDO aprova todos; horário que já passou é reprogramado sozinho para sair na hora; post que falhou: TENTAR DE NOVO (sem PIN).',
+        esperando_aprovacao: [...pend.campaigns.map((c) => `plano ${clampText(c.name, 60)} (APROVAR ${c.wa_code})`), ...pend.items.map((i) => `${clampText(i.title, 60)} (APROVAR ${i.wa_code})`)].slice(0, 8),
+        publicador: { online: !!pub.online, redes_prontas: pub.redes || [], ajustes: pub.ajustes || {} },
+        ultimo_com_erro: falhou ? { titulo: clampText(falhou.title, 60), redes: Object.fromEntries(Object.entries(falhou.result?.redes || {}).map(([k, v]) => [k, v.situacao + (v.erro ? `: ${clampText(v.erro, 140)}` : '')])) } : null,
+      };
+    } catch { /* marketing indisponível */ }
+  }
   return contexto;
 }
 
