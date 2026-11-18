@@ -3,8 +3,8 @@ import { createAvatar } from './avatar.js?v=20261011a';
 import { speechText, sentences, FILLERS } from './speech.js?v=20261114a';
 import { sparkline, ring, animateRings, radar, statusBar, flowChart, countUp, sysColor, projectionChart } from './hud.js?v=20261007a';
 import { viewJarvis, createPtt, bindSpacebar } from './jarvis.js?v=20261114c';
-import { viewMarketing } from './marketing.js?v=20261114a';
-import { viewMapa } from './mapa.js?v=20261117a';
+import { viewMarketing } from './marketing.js?v=20261118a';
+import { viewMapa } from './mapa.js?v=20261118a';
 // LORLER · Central de Decisões — painel HUD (SPA sem dependências)
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];

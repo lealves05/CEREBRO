@@ -3,7 +3,7 @@
 //   Rotinas autônomas (no fuso da organização):
 //     contatos  06:00  Captador de Leads   → cadastros novos nas últimas 24 h (Master) e quem está terminando o teste
 //     caixa     09:00  Financeiro          → recebido ontem/hoje, em atraso e vencendo (Master)
-//     post      12:00  Social Media        → arte + post do dia pronto para aprovar (dias úteis; pula se já houver post do dia)
+//     post      12:00  Social Media        → post do dia pronto para aprovar: arte nova ou vídeo da biblioteca, dia sim dia não (dias úteis; pula se já houver post do dia)
 //     sites     a cada hora  Guardião      → confere se os sites dos sistemas estão no ar; avisa quando cai e quando volta
 //     risco     seg 10:30  Retenção        → clientes sem acesso há 7 dias ou com o teste acabando
 //   Tudo vai para a atividade do mapa e, se o WhatsApp do dono estiver ligado, chega como mensagem.
@@ -125,9 +125,12 @@ export const RUN = {
     if (jaTem) { log(ctx.orgId, 'marketing', 'Social Media', 'já existe post para hoje/amanhã — não criei outro'); return { text: '', quiet: true }; }
     const owner = await import('./owner-actions.js');
     const systems = ['ORBI', 'TORVEN', 'RUSTEN', 'APOLVEN', 'ANIBI', 'CIFREN'];
-    const sistema = systems[Math.floor(Date.parse(lp.date) / 86400_000) % systems.length];
-    const r = await owner.perform({ ...ctx, channel: 'whatsapp' }, 'gerar_imagem', { sistema });
-    log(ctx.orgId, 'marketing', 'Social Media', `post do dia (${sistema}) pronto para aprovar`);
+    const dia = Math.floor(Date.parse(lp.date) / 86400_000);
+    const sistema = systems[dia % systems.length];
+    // dia sim, dia não: vídeo pronto da biblioteca (Reels/Shorts) quando houver; nos outros, arte nova
+    const usarVideo = dia % 2 === 1 && mkt.listVideos(ctx).some((v) => v.sistema === sistema);
+    const r = await owner.perform({ ...ctx, channel: 'whatsapp' }, usarVideo ? 'postar_video' : 'gerar_imagem', { sistema });
+    log(ctx.orgId, 'marketing', 'Social Media', `post do dia (${sistema}, ${usarVideo ? 'vídeo' : 'arte'}) pronto para aprovar`);
     return { text: `📣 *Post do dia*: ${r?.reply || ''}` };
   },
   async sites(ctx) {

@@ -1,6 +1,7 @@
 // Rotas do Marketing: agenda de posts, planos (campanhas), anúncios, ações comerciais, mídia e aprovação.
 import { requirePerm } from '../auth/authz.js';
 import { requireRecentAuth } from '../auth/auth.js';
+import fs from 'node:fs';
 import { errors, clampText } from '../lib/util.js';
 import * as mkt from '../services/marketing.js';
 import * as companyMap from '../services/company-map.js';
@@ -27,6 +28,33 @@ export function registerMarketingRoutes(router) {
   router.get('/api/mkt/items/:id', ({ ctx, params }) => { requirePerm(ctx, 'view'); return mkt.getItem(ctx, params.id); });
   router.post('/api/mkt/items', ({ ctx, body }) => { requirePerm(ctx, 'create_decision'); return mkt.createItem(ctx, body || {}, { source: 'painel' }); }, { bigBody: true });
   router.put('/api/mkt/items/:id', ({ ctx, params, body }) => { requirePerm(ctx, 'create_decision'); return mkt.updateItem(ctx, params.id, body || {}); }, { bigBody: true });
+  router.post('/api/mkt/items/:id/retry', ({ ctx, params }) => { requirePerm(ctx, 'create_decision'); return mkt.retry(ctx, params.id); });
+  // biblioteca de vídeos prontos (pasta videos/ na VPS, enviada pelo ENVIAR-VIDEOS-CEREBRO.bat)
+  router.get('/api/mkt/videos', ({ ctx }) => { requirePerm(ctx, 'view'); return { videos: mkt.listVideos(ctx), pasta: mkt.videosDir() }; });
+  router.post('/api/mkt/videos/:file/post', ({ ctx, params, body }) => {
+    requirePerm(ctx, 'create_decision');
+    const v = mkt.listVideos(ctx).find((x) => x.file === params.file);
+    if (!v) throw errors.notFound();
+    return mkt.createVideoPost(ctx, v, { networks: body?.networks, scheduled_at: body?.scheduled_at || null, source: 'painel' });
+  });
+  router.get('/api/public/video/:file', ({ req, params, res }) => {
+    const v = mkt.readVideo(params.file);
+    if (!v) throw errors.notFound();
+    const base = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline' };
+    const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+    if (m && (m[1] || m[2])) {
+      let start = m[1] ? Number(m[1]) : Math.max(0, v.bytes - Number(m[2]));
+      let end = m[1] && m[2] ? Math.min(Number(m[2]), v.bytes - 1) : v.bytes - 1;
+      if (start >= v.bytes || start > end) { res.writeHead(416, { 'Content-Range': `bytes */${v.bytes}` }); res.end(); return null; }
+      res.writeHead(206, { ...base, 'Content-Range': `bytes ${start}-${end}/${v.bytes}`, 'Content-Length': end - start + 1 });
+      fs.createReadStream(v.path, { start, end }).pipe(res);
+      return null;
+    }
+    res.writeHead(200, { ...base, 'Content-Length': v.bytes });
+    if (req.method === 'HEAD') { res.end(); return null; }
+    fs.createReadStream(v.path).pipe(res);
+    return null;
+  }, { public: true });
   router.post('/api/mkt/items/:id/cancel', ({ ctx, params }) => { requirePerm(ctx, 'create_decision'); return mkt.cancel(ctx, params.id); });
   router.post('/api/mkt/draft', ({ ctx, body }) => { requirePerm(ctx, 'view'); return mkt.draftTexts({ product: String(body?.product || '').toUpperCase() || null, topic: clampText(String(body?.topic || ''), 200), offer: clampText(String(body?.offer || ''), 200), libIndex: Number(body?.lib_index) || 0 }); });
   router.post('/api/mkt/plan', ({ ctx, body }) => { requirePerm(ctx, 'create_decision'); return mkt.planCampaign(ctx, body || {}, { source: 'painel' }); });

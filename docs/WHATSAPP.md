@@ -51,7 +51,22 @@ validade, política e revalidação no executor).
 | `RADAR` | Saúde, receita, ativas, cancelamentos e atrasos de cada sistema |
 | `PENDENTES` | Aprovações aguardando você |
 | `VER código` · `APROVAR código` · `REVISAR código o que mudar` · `REJEITAR código motivo` | Decidir pelo celular (aprovar sempre pede o PIN) |
+| `APROVAR código` (marketing) | Pede o PIN; depois do PIN certo, por 30 min, `APROVAR código` aprova direto |
+| `APROVAR TUDO` (`… AGENDADO`) | Aprova todos os posts e planos que esperam, com um PIN só |
+| `TENTAR DE NOVO` · `TENTAR código` | Publica de novo só as redes que não saíram (o post já foi aprovado: sem PIN). `APROVAR código` de um post com erro faz o mesmo |
+| `VÍDEOS` | Lista os vídeos prontos da biblioteca; "posta o vídeo do TORVEN laudos" prepara o post (Reels, Facebook e YouTube Shorts) |
+| "como corrigir o instagram" | Passo a passo conforme o motivo (falta permissão no app da Meta ou Instagram não vinculado à Página) |
 | texto livre | Conversa com o Cérebro (se *Conversa livre* estiver ligada) |
+
+#### Publicação: Instagram e vídeos
+- O publicador da VPS procura o Instagram pela Página a cada tentativa. Se não achar, o post fica **esperando ajuste**
+  (⏸️) e é tentado de novo a cada 10 min por até 3 dias: corrigido o vínculo ou a permissão, ele sai sozinho.
+  O aviso no WhatsApp diz qual dos dois falta.
+- Vídeos prontos ficam em `/var/lib/lorler/cerebro/videos` (enviados pelo `ENVIAR-VIDEOS-CEREBRO.bat`, que o
+  `LIGAR-PUBLICADOR-CEREBRO.bat` também chama). Legendas: `mensagens-whatsapp.txt` (`[arquivo.mp4]` + texto).
+  Link público com Range: `/api/public/video/<arquivo>.mp4`; o publicador lê o arquivo direto do disco
+  (`midia_arquivo`) e envia o Reels ao Instagram por upload direto.
+- O post do dia (Mapa da empresa) alterna: arte nova num dia, vídeo da biblioteca no outro.
 
 Referências: [Mensagens com botões](https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/interactive-reply-buttons-messages) ·
 [API de mensagens](https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-phone-number/message-api)

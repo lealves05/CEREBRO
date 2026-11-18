@@ -200,7 +200,7 @@ function ctxFor(link) {
   return { userId: link.user_id, orgId: link.organization_id, role: m.role, memberId: m.id, name: u?.display_name, email: u?.email, productIds: new Set(q.all('SELECT product_id FROM member_product_scopes WHERE member_id = ?', m.id).map((r) => r.product_id)) };
 }
 
-const HELP = 'Comandos LORLER:\n• *RESUMO* — briefing do dia\n• *RADAR* — situação de cada sistema\n• *PENDENTES* — aprovações aguardando você\n• *VER código* — detalhes completos\n• *APROVAR código* — aprovar (pede o PIN)\n• *REJEITAR código motivo*\n• *REVISAR código o que mudar*\n• *CANCELAR* — desiste da confirmação em andamento\n• *MARKETING* — posts agendados e o que espera aprovação\n• *REUNIÃO DE MARKETING* — monto o plano com você (posts, anúncio e ações)\n• Foto ou vídeo — eu coloco nos posts';
+const HELP = 'Comandos LORLER:\n• *RESUMO* — briefing do dia\n• *RADAR* — situação de cada sistema\n• *PENDENTES* — aprovações aguardando você\n• *VER código* — detalhes completos\n• *APROVAR código* — aprovar (pede o PIN; depois do PIN, 30 min sem pedir de novo)\n• *APROVAR TUDO* — aprova tudo o que espera, com um PIN só\n• *TENTAR DE NOVO* — publica outra vez o post que falhou (sem PIN)\n• *VÍDEOS* — vídeos prontos para postar\n• *REJEITAR código motivo*\n• *REVISAR código o que mudar*\n• *CANCELAR* — desiste da confirmação em andamento\n• *MARKETING* — posts agendados e o que espera aprovação\n• *REUNIÃO DE MARKETING* — monto o plano com você (posts, anúncio e ações)\n• Foto ou vídeo — eu coloco nos posts';
 
 export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t), defer = null } = {}) {
   // Deduplicação por id da mensagem (reentregas do webhook)
@@ -302,6 +302,9 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
   else {
     const m = /^(aprovar|rejeitar|revisar|ver)\s+([A-Z0-9]{6})\b\s*(.*)$/is.exec(text);
     if (m) { cmd = m[1].toLowerCase(); code = m[2].toUpperCase(); rest = m[3].trim(); }
+    else if (/^aprovar\s+(tudo|todos|todas)\b/i.test(text)) { cmd = 'aprovar_tudo'; rest = text.replace(/^aprovar\s+\S+\s*/i, ''); }
+    else if (/^(tentar|tenta|tente)( de novo| novamente)?(\s+[A-Z0-9]{6})?\s*[.!]?$|^(republicar|publicar de novo|publica de novo)(\s+[A-Z0-9]{6})?$/i.test(text)) { cmd = 'tentar'; code = ((/\b(M[A-Z0-9]{5})\b/i.exec(text) || [])[1] || '').toUpperCase() || null; }
+    else if (/^v[ií]deos?( prontos)?$/i.test(text)) cmd = 'videos';
     else if (/^pendentes?$/i.test(text)) cmd = 'pendentes';
     else if (/^(resumo|briefing)$/i.test(text)) cmd = 'resumo';
     else if (/^radar$/i.test(text)) cmd = 'radar';
@@ -312,12 +315,22 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
     const target = mkt.findByCode(ctx.orgId, code);
     if (target) {
       if (!can(ctx, 'approve')) { await say('Seu perfil não pode aprovar publicações.'); return { error: 'forbidden' }; }
+      // post já aprovado que falhou: aprovar de novo = tentar de novo (sem PIN)
+      if (target.item_id) {
+        const it0 = mkt.getItem(ctx, target.item_id);
+        if (it0.approved_at && ['erro', 'parcial'].includes(it0.status)) { cmd = 'tentar'; }
+        else if (it0.status === 'publicado') { await say(`*${clampText(it0.title, 60)}* já foi publicado. ✅`); return { already: true }; }
+      }
+    }
+    if (target && cmd === 'aprovar') {
       if (!link.pin_hash) { await say('Cadastre seu PIN no painel (WhatsApp › PIN) para aprovar por aqui.'); return { error: 'no_pin' }; }
       if (link.pin_locked_until && link.pin_locked_until > now()) { await say('PIN bloqueado por tentativas erradas. Tente mais tarde ou aprove pelo painel.'); return { error: 'locked' }; }
       const resumo = target.campaign_id ? (() => { const c = mkt.getCampaign(ctx, target.campaign_id); return `o plano *${clampText(c.name, 60)}* (${c.items.filter((i) => i.status === 'aguardando_aprovacao').length} itens)`; })() : (() => { const it = mkt.getItem(ctx, target.item_id); return `*${clampText(it.title, 60)}* — ${mkt.fmtWhen(it.scheduled_at)} no ${it.networks.map((n) => mkt.NETWORK_LABEL[n]).join(' e ')}`; })();
       q.run(`UPDATE ${target.campaign_id ? 'mkt_campaigns' : 'mkt_items'} SET wa_pin_until = ? WHERE id = ?`, addMs(5 * 60_000), target.campaign_id || target.item_id);
       const keep = /\b(agend|no horario|horario marcado|depois)/i.test(rest.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
       keepSchedule.set(target.campaign_id || target.item_id, keep);
+      // PIN confirmado há menos de 30 min: aprova direto, sem pedir de novo
+      if (link.pin_ok_until && link.pin_ok_until > now()) return approveWaiting(ctx, say);
       // PIN já veio junto ("APROVAR MWOYM7 221106"): aprova direto
       const inlinePin = (/\b(\d{4,8})\b/.exec(rest) || [])[1];
       if (inlinePin) {
@@ -327,6 +340,43 @@ export async function handleInbound(msg, { reply = (to, t) => wa.sendText(to, t)
       await say(`Para aprovar ${resumo}, envie seu PIN (vale 5 minutos). ${target.campaign_id ? 'Os posts do plano saem nos dias marcados (os de hoje que já passaram, na hora).' : keep ? 'Ele sai no horário marcado.' : 'Assim que aprovar, eu publico na hora (para manter o horário marcado, mande APROVAR código AGENDADO).'} CANCELAR desiste.`);
       return { awaiting_pin: 'marketing' };
     }
+  }
+  if (cmd === 'aprovar_tudo') {
+    if (!can(ctx, 'approve')) { await say('Seu perfil não pode aprovar publicações.'); return { error: 'forbidden' }; }
+    const pend = mkt.pendingApproval(ctx);
+    const alvos = [...pend.campaigns.map((c) => ['mkt_campaigns', c.id, c.name]), ...pend.items.map((i) => ['mkt_items', i.id, i.title])];
+    if (!alvos.length) { await say('Nada esperando aprovação agora. 👍'); return { aprovar_tudo: 0 }; }
+    if (!link.pin_hash) { await say('Cadastre seu PIN no painel (WhatsApp › PIN) para aprovar por aqui.'); return { error: 'no_pin' }; }
+    if (link.pin_locked_until && link.pin_locked_until > now()) { await say('PIN bloqueado por tentativas erradas. Tente mais tarde ou aprove pelo painel.'); return { error: 'locked' }; }
+    const keep = /\b(agend|no horario|horario marcado|depois)/i.test(rest.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+    for (const [t, id] of alvos) { q.run(`UPDATE ${t} SET wa_pin_until = ? WHERE id = ?`, addMs(5 * 60_000), id); keepSchedule.set(id, keep); }
+    if (link.pin_ok_until && link.pin_ok_until > now()) return approveWaiting(ctx, say);
+    const inlinePin = (/\b(\d{4,8})\b/.exec(rest) || [])[1];
+    if (inlinePin) return confirmMktPin(ctx, q.get('SELECT * FROM whatsapp_links WHERE id = ?', link.id) || link, { t: 'i', id: alvos[0][1] }, inlinePin, say);
+    await say(`Vou aprovar ${alvos.length} ${alvos.length === 1 ? 'item' : 'itens'}:\n${alvos.slice(0, 8).map(([, , n]) => `• ${clampText(n, 60)}`).join('\n')}${alvos.length > 8 ? `\n… e mais ${alvos.length - 8}` : ''}\nEnvie seu PIN (vale 5 minutos). ${keep ? 'Os posts saem nos horários marcados.' : 'Os posts saem na hora (para manter os horários, mande APROVAR TUDO AGENDADO).'} CANCELAR desiste.`);
+    return { awaiting_pin: 'marketing_all', count: alvos.length };
+  }
+  if (cmd === 'tentar') {
+    if (!can(ctx, 'approve')) { await say('Seu perfil não pode publicar.'); return { error: 'forbidden' }; }
+    let it = null;
+    if (code) { const tg = mkt.findByCode(ctx.orgId, code); it = tg?.item_id ? mkt.getItem(ctx, tg.item_id) : null; }
+    else it = mkt.lastFailed(ctx);
+    if (!it) { await say(code ? `Não achei o post ${code}.` : 'Não há post com erro para tentar de novo. 👍'); return { tentar: 'none' }; }
+    try {
+      const r = mkt.retry(ctx, it.id);
+      const pub = mkt.publisherStatus();
+      const falta = r.networks.filter((n) => n === 'instagram' && pub.ajustes?.instagram);
+      await say(`🔁 Tentando de novo *${clampText(it.title, 60)}* no ${r.networks.map((n) => mkt.NETWORK_LABEL[n]).join(' e ')}. Te aviso aqui quando sair.${falta.length ? `\n⚠️ O publicador ainda não encontrou o Instagram: se não tiver feito o ajuste, mande *COMO CORRIGIR O INSTAGRAM*.` : ''}`);
+      return { tentar: it.id };
+    } catch (e) { await say(e.message); return { error: e.message }; }
+  }
+  if (cmd === 'videos') {
+    const vids = mkt.listVideos(ctx);
+    if (!vids.length) { await say('Ainda não há vídeos na biblioteca do Cérebro. No PC, rode o *ENVIAR-VIDEOS-CEREBRO.bat* (ele manda a pasta Videos promocionais para a VPS). Você também pode me mandar um vídeo aqui que eu uso no post.'); return { videos: 0 }; }
+    const porSis = {};
+    for (const v of vids) (porSis[v.sistema] ||= []).push(v);
+    await say(`🎬 *${vids.length} vídeos prontos*\n${Object.entries(porSis).map(([s, l]) => `${s}: ${l.map((v) => `${v.titulo.replace(/^\w+:\s*/, '')}${v.usos ? ` (${v.usos}x)` : ''}`).join(', ')}`).join('\n')}\n\nDiga, por exemplo, *posta o vídeo do TORVEN laudos* ou *posta um vídeo do RUSTEN* que eu preparo o post (Instagram Reels, Facebook e YouTube) para você aprovar.`);
+    return { videos: vids.length };
   }
   if (cmd === 'marketing') {
     const pend = mkt.pendingApproval(ctx); const up = mkt.upcoming(ctx, { days: 7, limit: 8 });
@@ -429,11 +479,29 @@ async function confirmMktPin(ctx, link, wait, pin, say) {
     await say(fails >= 3 ? 'PIN incorreto 3 vezes. Aprovações por WhatsApp bloqueadas por 15 minutos.' : `PIN incorreto. Tentativas restantes: ${3 - fails}.`);
     return { error: 'pin' };
   }
-  q.run('UPDATE whatsapp_links SET pin_failed = 0 WHERE id = ?', link.id);
+  q.run('UPDATE whatsapp_links SET pin_failed = 0, pin_ok_until = ? WHERE id = ?', addMs(PIN_OK_MS), link.id);
+  return approveWaiting(ctx, say, { fresh: true });
+}
+
+const PIN_OK_MS = 30 * 60_000; // depois do PIN certo, 30 min aprovando sem pedir de novo
+/** Aprova tudo o que está esperando o PIN (um post, um plano ou o "APROVAR TUDO"). */
+async function approveWaiting(ctx, say, { fresh = false } = {}) {
+  const waits = q.all("SELECT 'c' AS t, id FROM mkt_campaigns WHERE organization_id = ? AND wa_pin_until > ? UNION ALL SELECT 'i' AS t, id FROM mkt_items WHERE organization_id = ? AND wa_pin_until > ?", ctx.orgId, now(), ctx.orgId, now());
+  if (!waits.length) { await say('Não há nada esperando aprovação.'); return { approved: false }; }
+  const total = { queued: [], now: [], ready_ads: [], tasks: [], skipped: [] };
+  for (const wait of waits) {
+    try {
+      const publishNow = wait.t !== 'c' && !keepSchedule.get(wait.id);
+      keepSchedule.delete(wait.id);
+      const r = mkt.approve(ctx, wait.t === 'c' ? { campaign_id: wait.id, via: 'whatsapp' } : { item_id: wait.id, via: 'whatsapp', publishNow });
+      for (const k of Object.keys(total)) total[k].push(...(r[k] || []));
+    } catch (e) {
+      q.run(`UPDATE ${wait.t === 'c' ? 'mkt_campaigns' : 'mkt_items'} SET wa_pin_until = NULL WHERE id = ?`, wait.id);
+      total.skipped.push({ title: wait.t === 'c' ? 'plano' : (q.get('SELECT title FROM mkt_items WHERE id = ?', wait.id)?.title || 'post'), issues: [e.message] });
+    }
+  }
   try {
-    const publishNow = wait.t !== 'c' && !keepSchedule.get(wait.id);
-    keepSchedule.delete(wait.id);
-    const r = mkt.approve(ctx, wait.t === 'c' ? { campaign_id: wait.id, via: 'whatsapp' } : { item_id: wait.id, via: 'whatsapp', publishNow });
+    const r = total;
     const parts = [];
     const agora = (r.now || []).length;
     if (agora) parts.push(`${agora === 1 ? 'publicando agora' : `${agora} posts publicando agora`} (em até 1 minuto estão no ar; te aviso aqui quando sair)`);
@@ -441,7 +509,9 @@ async function confirmMktPin(ctx, link, wait, pin, say) {
     if (r.ready_ads.length) parts.push(`${r.ready_ads.length} anúncio pronto pra você subir (te mando os detalhes no painel, em Marketing)`);
     if (r.tasks.length) parts.push(`${r.tasks.length} tarefa${r.tasks.length > 1 ? 's' : ''} das ações comerciais`);
     const pend = r.skipped.length ? `\n⚠️ Ficou de fora: ${r.skipped.map((x) => `${clampText(x.title, 40)} (${x.issues[0]})`).join('; ')}.` : '';
-    await say(`✅ Aprovado. ${parts.join(', ') || 'Nada para executar'}.${pend}`);
+    const pub = mkt.publisherStatus();
+    const igAviso = agora && pub.ajustes?.instagram ? '\n⚠️ Atenção: o publicador ainda não encontrou o Instagram. Facebook e as outras redes saem normalmente; o Instagram sai sozinho assim que o ajuste for feito (mande *COMO CORRIGIR O INSTAGRAM*).' : '';
+    await say(`✅ Aprovado. ${parts.join(', ') || 'Nada para executar'}.${pend}${igAviso}${fresh ? '\n(Nos próximos 30 min, APROVAR código não pede o PIN.)' : ''}`);
     return { approved: true, marketing: r };
   } catch (e) { await say(`Não consegui aprovar: ${e.message}`); return { error: e.message }; }
 }
@@ -562,14 +632,45 @@ export async function processMarketing({ send = null } = {}) {
   for (const it of changed) {
     const who = it.approved_by || it.created_by;
     const link = who ? q.get("SELECT wa_id FROM whatsapp_links WHERE user_id = ? AND organization_id = ? AND status = 'verified' AND wa_id IS NOT NULL", who, it.organization_id) : null;
-    q.run('UPDATE mkt_items SET notified_at = ? WHERE id = ?', now(), it.id);
+    if (!it.aviso) q.run('UPDATE mkt_items SET notified_at = ? WHERE id = ?', now(), it.id);
     if (!link || (!send && !wa.isConfigured())) continue;
-    const r = it.result?.redes || {};
-    const linhas = it.networks.map((n) => `${r[n]?.situacao === 'publicado' ? '✅' : '❌'} ${mkt.NETWORK_LABEL[n]}${r[n]?.url ? `: ${r[n].url}` : r[n]?.erro ? ` — ${clampText(r[n].erro, 120)}` : ''}`).join('\n');
-    const text = `${it.status === 'publicado' ? '📣 Publicado' : it.status === 'parcial' ? '📣 Publicado em parte' : '⚠️ Não consegui publicar'}: *${clampText(it.title, 70)}*\n${linhas}${it.result?.erro ? `\n${clampText(it.result.erro, 160)}` : ''}`;
+    const text = publishMessage(it);
     try { if (send) await send(link.wa_id, text); else await wa.sendText(link.wa_id, text); } catch (e) { console.warn('[marketing] aviso', e.message); }
   }
   return { notified: changed.length };
+}
+
+const ICON = { publicado: '✅', aguardando_ajuste: '⏸️', pendente: '⏳', erro: '🔁' };
+/** Texto do aviso de publicação: link de cada rede e, se algo falhou, o que fazer (sem jargão). */
+export function publishMessage(it) {
+  const r = it.result?.redes || {};
+  const linhas = it.networks.map((n) => {
+    const x = r[n] || {};
+    const motivo = x.situacao === 'aguardando_ajuste' ? 'esperando um ajuste na conta (sai sozinho quando arrumar)' : clampText(friendlyError(x.erro), 120);
+    return `${ICON[x.situacao] || '❌'} ${mkt.NETWORK_LABEL[n]}${x.url ? `: ${x.url}` : x.erro || x.situacao === 'aguardando_ajuste' ? ` — ${motivo}` : ''}`;
+  }).join('\n');
+  const head = it.aviso ? '⏸️ Publicação esperando ajuste' : it.status === 'publicado' ? '📣 Publicado' : it.status === 'parcial' ? '📣 Publicado em parte' : '⚠️ Não consegui publicar';
+  const igErro = it.networks.includes('instagram') && r.instagram?.situacao !== 'publicado' ? String(r.instagram?.erro || '') : '';
+  const guia = /aguardando ajuste|não ligado à Página|nao ligado/i.test(igErro) ? `\n\n${instagramGuide(igErro)}` : '';
+  const acao = it.status === 'publicado' ? '' : it.aviso ? '' : `\n\nResolvido? Mande *TENTAR DE NOVO* que eu publico só o que faltou (sem PIN).`;
+  return `${head}: *${clampText(it.title, 70)}*\n${linhas}${it.result?.erro ? `\n${clampText(friendlyError(it.result.erro), 200)}` : ''}${guia}${acao}`;
+}
+function friendlyError(e) {
+  const t = String(e || '');
+  if (/aguardando ajuste/i.test(t)) return t.replace(/^Instagram aguardando ajuste \([^)]*\):\s*/i, '');
+  if (/HTTP 5\d\d|sem resposta/i.test(t)) return 'a rede não respondeu agora (eu tento de novo sozinho)';
+  if (/OAuthException|HTTP 401|token/i.test(t)) return 'o acesso à rede venceu: reconecte no PUBLICADOR.bat › 1 e envie › 3';
+  return t;
+}
+/** Passo a passo para o Instagram aparecer no publicador (permissão no app da Meta ou vínculo com a Página). */
+export function instagramGuide(err = '') {
+  const perm = /permiss/i.test(err);
+  const vinc = /v[ií]nculo|não tem Instagram|nao tem Instagram|não ligado|nao ligado/i.test(err);
+  const passosPerm = '1. developers.facebook.com › seu app LORLER › *Casos de uso* › Adicionar › "Gerenciar mensagens e conteúdo no Instagram".\n2. No PC, PUBLICADOR.bat › *1* (Facebook+Instagram): no Explorer marque também *instagram_basic* e *instagram_content_publish*.\n3. PUBLICADOR.bat › *3* (enviar para a VPS).';
+  const passosVinc = '1. No celular: Instagram › Editar perfil › *Página* › Conectar à Página da LORLER (a conta precisa ser Profissional).\n2. Pronto: a VPS acha o Instagram sozinha na próxima tentativa (a cada 10 min).';
+  if (perm) return `🔧 *Como corrigir o Instagram* (falta permissão no acesso):\n${passosPerm}\nDepois mande *TENTAR DE NOVO*.`;
+  if (vinc) return `🔧 *Como corrigir o Instagram* (Instagram não vinculado à Página):\n${passosVinc}`;
+  return `🔧 *Como corrigir o Instagram*:\nA) Se o Instagram não está ligado à Página:\n${passosVinc}\nB) Se já está ligado, falta permissão no app da Meta:\n${passosPerm}\nDepois mande *TENTAR DE NOVO*.`;
 }
 
 /** Manda o resumo de um plano/post enviado para aprovação pelo painel (com o código para aprovar com PIN). */

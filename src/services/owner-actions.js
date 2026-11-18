@@ -23,6 +23,10 @@ export const CATALOG = [
   { nome: 'redes_status', descricao: 'confere a conexão com as redes sociais e se o publicador da VPS está pronto para publicar' },
   { nome: 'criar_post', descricao: 'cria um post (texto e mídia da biblioteca) e deixa pronto para aprovar', args: 'tema, redes[instagram|facebook|tiktok|linkedin], quando (ex.: "amanhã 18h"), sistema (ORBI, TORVEN...)' },
   { nome: 'gerar_imagem', descricao: 'gera uma imagem/arte promocional (feed 1080x1350) com título e chamada; pode usar como fundo a foto que ele acabou de mandar. Manda a imagem e deixa um post pronto com ela', args: 'sistema, tema, titulo (texto principal), apoio (frase menor), cta, usar_ultima_foto (true se ele mandou uma foto e quer a arte em cima dela), redes[]' },
+  { nome: 'postar_video', descricao: 'prepara um post com um vídeo pronto da biblioteca (Reels no Instagram, Facebook e YouTube Shorts) e manda para aprovar; sem nome escolhe o menos usado', args: 'sistema (ORBI, TORVEN...), video (palavra do nome, ex.: laudos), redes[], quando (opcional)' },
+  { nome: 'videos', descricao: 'lista os vídeos prontos da biblioteca do Cérebro' },
+  { nome: 'corrigir_instagram', descricao: 'explica por que o Instagram não publicou e o passo a passo para corrigir' },
+  { nome: 'tentar_de_novo', descricao: 'publica de novo o último post que falhou (só as redes que não saíram)', args: 'codigo (opcional, ex.: MJFQXN)' },
   { nome: 'mapa_empresa', descricao: 'mostra o mapa da empresa: departamentos com números do dia, rotinas automáticas e o que espera aprovação' },
   { nome: 'rodar_rotina', descricao: 'roda agora uma rotina automática do mapa', args: 'rotina (contatos | caixa | post | sites | risco)' },
   { nome: 'agenda_posts', descricao: 'lista os posts e ações agendados e o que espera aprovação' },
@@ -67,6 +71,15 @@ export function quickIntent(text) {
     const sis = (f.match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1];
     return { nome: 'gerar_imagem', args: sis ? { sistema: sis.toUpperCase() } : {} };
   }
+  if (/\b(como|o que)\b.*\b(corrig|arrum|resolv|consert|fazer)\w*\b.*\binsta(gram)?\b|\binsta(gram)?\b.*\b(nao|não) (publica|posta|sai|foi|conect|lig)/.test(f) || /\b(corrig|arrum|resolv|consert)\w* (o )?insta(gram)?\b/.test(f)) return { nome: 'corrigir_instagram', args: {} };
+  if (/^como (e que )?(eu )?(consigo |posso |faco |faço |devo )?(corrig|resolv|arrum|consert)\w*( isso| esse erro| o erro| a publicacao| o post)?\??$/.test(f)) return { nome: 'corrigir_instagram', args: { generico: true } };
+  if (/^(tenta|tente|tentar) (de novo|novamente)|^(publica|posta|publique|poste) de novo\b|^republic/.test(f)) return { nome: 'tentar_de_novo', args: {} };
+  if (/\b(quais|lista|mostra|ver)\b.*\bvideos?\b.*\b(prontos?|biblioteca|temos|tem)\b|^videos?( prontos)?$/.test(f)) return { nome: 'videos', args: {} };
+  if (/\b(post|posta|postar|publica|publicar|prepar|cri|faz|agend|sobe|subir|coloca)\w*\b.*\bvideos?\b|\bvideos?\b.*\b(nas redes|no instagram|no reels|no youtube|no face|pra postar|para postar)\b|\breels?\b.*\b(do|da|com o) (video|orbi|torven|rusten|apolven|anibi|cifren)\b/.test(f)) {
+    const sis = (f.match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1];
+    const termo = (f.match(/\bvideos? (?:do |da |de )?(?:orbi |torven |rusten |apolven |anibi |cifren )?(?:sobre |de |do |da )?([a-z]{4,})\b/) || [])[1] || '';
+    return { nome: 'postar_video', args: { ...(sis ? { sistema: sis.toUpperCase() } : {}), ...(termo && !/^(orbi|torven|rusten|apolven|anibi|cifren|para|pras?|nas|novo|hoje|amanha)$/.test(termo) ? { video: termo } : {}) } };
+  }
   if (/\b(mapa da empresa|quadro da empresa|mapa do cerebro|como esta a empresa|visao geral da empresa)\b/.test(f)) return { nome: 'mapa_empresa', args: {} };
   { const m = /\b(rod|confer|verific|fa[zc])\w*\b.*\b(caixa do dia|contatos novos|post do dia|sites( no ar)?|clientes em risco)\b/.exec(f); if (m) return { nome: 'rodar_rotina', args: { rotina: { 'caixa do dia': 'caixa', 'contatos novos': 'contatos', 'post do dia': 'post', 'clientes em risco': 'risco' }[m[2]] || 'sites' } }; }
   const pergunta = /^(qual|quais|quando|como|onde|por ?que|o que|quanto)\b/.test(f);
@@ -105,8 +118,9 @@ async function run(ctx, nome, a = {}, text = '') {
       const falta = todas.filter((r) => !ok.includes(r));
       if (!p.online) return `O publicador da VPS não respondeu${p.minutos != null && !p.nunca_rodou ? ` (última rodada há ${p.minutos} min)` : ''}. Rode o LIGAR-PUBLICADOR-CEREBRO.bat no PC para ele voltar a ler a fila.`;
       if (!p.credenciais) return 'O publicador da VPS está ligado, mas ainda não recebeu as credenciais das redes. No PUBLICADOR.bat, use a opção 3 (Enviar para a VPS).';
+      const igAjuste = p.ajustes?.instagram ? ' O Instagram está conectado à Página mas ainda não foi encontrado pelo publicador (falta permissão ou vínculo): diga "como corrigir o instagram".' : '';
       return ok.length
-        ? `Publicador online (rodou há ${p.minutos} min). Prontas para publicar: ${ok.map((r) => mkt.NETWORK_LABEL[r] || r).join(', ')}.${falta.length ? ` Faltam: ${falta.map((r) => mkt.NETWORK_LABEL[r]).join(', ')} (PUBLICADOR.bat › 1 e depois › 3).` : ''} Quer que eu gere um post agora?`
+        ? `Publicador online (rodou há ${p.minutos} min). Prontas para publicar: ${ok.map((r) => mkt.NETWORK_LABEL[r] || r).join(', ')}.${falta.filter((r) => !(r === 'instagram' && igAjuste)).length ? ` Faltam: ${falta.filter((r) => !(r === 'instagram' && igAjuste)).map((r) => mkt.NETWORK_LABEL[r]).join(', ')} (PUBLICADOR.bat › 1 e depois › 3).` : ''}${igAjuste} Quer que eu gere um post agora?`
         : 'O publicador está online, mas nenhuma rede foi conectada ainda. No PUBLICADOR.bat: opção 1 para conectar e opção 3 para enviar para a VPS.';
     }
     case 'criar_post': {
@@ -138,6 +152,44 @@ async function run(ctx, nome, a = {}, text = '') {
       let sent = false;
       if (ctx.channel === 'whatsapp' && link?.wa_id) { try { await wa.sendImage(link.wa_id, img.buffer, img.mime, `Arte do ${sistema}${img.how === 'biblioteca' ? ' (da biblioteca)' : ''}`, saved.url); sent = true; } catch { /* manda o link abaixo */ } }
       return `${sent ? 'Mandei a arte aqui em cima. ' : `Arte pronta: ${saved.url} `}Deixei o post com ela para ${mkt.fmtWhen(when)} no ${nets.map((n) => mkt.NETWORK_LABEL[n]).join(' e ')}. Para publicar, responda *APROVAR ${sub.code}* e o PIN. Quer outra versão? Diga, por exemplo, "faz outra com o título …".`;
+    }
+    case 'videos': {
+      const vids = mkt.listVideos(ctx);
+      if (!vids.length) return 'A biblioteca de vídeos do Cérebro está vazia. No PC, rode o ENVIAR-VIDEOS-CEREBRO.bat (manda a pasta Videos promocionais para a VPS) ou me mande um vídeo aqui.';
+      return `🎬 ${vids.length} vídeos prontos:\n${vids.map((v) => `• ${v.titulo}${v.usos ? ` (já usado ${v.usos}x)` : ''}`).join('\n')}\nDiga "posta o vídeo do TORVEN laudos" (ou só "posta um vídeo") que eu preparo.`;
+    }
+    case 'postar_video': {
+      const v = mkt.pickVideo(ctx, { sistema: a.sistema || '', termo: a.video || '' });
+      if (!v) return 'Ainda não há vídeos na biblioteca do Cérebro. No PC, rode o ENVIAR-VIDEOS-CEREBRO.bat (manda a pasta Videos promocionais para a VPS). Ou me mande o vídeo aqui que eu coloco no post.';
+      const p = mkt.publisherStatus();
+      const conectadas = new Set(p.redes || []);
+      let nets = Array.isArray(a.redes) && a.redes.length ? a.redes : ['instagram', 'facebook', 'youtube'];
+      if (!a.redes?.length && conectadas.size) { const so = nets.filter((n) => conectadas.has(n) || (n === 'instagram' && p.ajustes?.instagram)); if (so.length) nets = so; }
+      const it = mkt.createVideoPost(ctx, v, { networks: nets, source: `conversa:${ctx.channel || 'voz'}` });
+      const sub = mkt.submit(ctx, { item_id: it.id });
+      const pinOk = q.get('SELECT pin_ok_until FROM whatsapp_links WHERE organization_id = ? AND user_id = ? AND status = ?', ctx.orgId, ctx.userId, 'verified')?.pin_ok_until > new Date().toISOString();
+      return `🎬 Post com o vídeo *${v.titulo}* pronto (${it.networks.map((n) => mkt.NETWORK_LABEL[n]).join(', ')}).\nLegenda: ${clampText(it.text, 180)}\nVídeo: ${v.url}\nPara publicar agora, responda *APROVAR ${sub.code}*${pinOk ? '' : ' e o PIN'}.${p.ajustes?.instagram && it.networks.includes('instagram') ? '\n⚠️ O Instagram ainda precisa de ajuste (mande "como corrigir o instagram"); as outras redes saem normalmente.' : ''}`;
+    }
+    case 'corrigir_instagram': {
+      const wap = await import('./whatsapp-approvals.js');
+      const p = mkt.publisherStatus();
+      const last = mkt.lastFailed(ctx);
+      const err = String(last?.result?.redes?.instagram?.erro || p.ajustes?.instagram || '');
+      const igProblema = p.ajustes?.instagram || /aguardando ajuste|não ligado|nao ligado|instagram/i.test(err);
+      if (!igProblema) {
+        if (!last) return (p.redes || []).includes('instagram') ? 'Não há publicação com erro agora: o Instagram e as outras redes estão prontos. 👍' : await run(ctx, 'redes_status', {});
+        const falhas = last.networks.filter((n) => last.result?.redes?.[n]?.situacao !== 'publicado').map((n) => `${mkt.NETWORK_LABEL[n]}: ${clampText(last.result?.redes?.[n]?.erro || 'não saiu', 160)}`);
+        return `O post "${clampText(last.title, 60)}" não saiu em: ${falhas.join('; ')}.\nSe a rede só estava fora do ar, mande TENTAR DE NOVO. Se fala em acesso ou token, reconecte no PUBLICADOR.bat › 1 e envie › 3, e depois TENTAR DE NOVO.`;
+      }
+      return `${wap.instagramGuide(err)}\n\nO que estava acontecendo: o publicador da VPS só consegue postar no Instagram quando a conta profissional está vinculada à Página do Facebook e o acesso salvo tem permissão de publicar no Instagram. Enquanto isso, Facebook e as outras redes funcionam normalmente.`;
+    }
+    case 'tentar_de_novo': {
+      let it = null;
+      if (a.codigo) { const t = mkt.findByCode(ctx.orgId, String(a.codigo).toUpperCase()); it = t?.item_id ? mkt.getItem(ctx, t.item_id) : null; }
+      it ||= mkt.lastFailed(ctx);
+      if (!it) return 'Não há post com erro para tentar de novo. 👍';
+      const r = mkt.retry(ctx, it.id);
+      return `🔁 Tentando de novo "${clampText(it.title, 60)}" no ${r.networks.map((n) => mkt.NETWORK_LABEL[n]).join(' e ')}. Te aviso quando sair.`;
     }
     case 'mapa_empresa': return (await import('./company-map.js')).mapSummary(ctx);
     case 'rodar_rotina': {

@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 
 const FILA = fs.mkdtempSync(path.join(os.tmpdir(), 'fila-'));
 process.env.LORLER_SOCIAL_FILA = FILA;
+const VIDEOS = fs.mkdtempSync(path.join(os.tmpdir(), 'videos-'));
+process.env.LORLER_VIDEOS = VIDEOS;
 process.env.LORLER_CONVERSA_IA = 'proprio';
 const { orgA, createUser, login, stopServer, startServer, q } = await import('./helpers.js');
 const { waHooks } = await import('../src/connectors/whatsapp.js');
@@ -19,7 +21,7 @@ const meeting = await import('../src/services/meeting.js');
 
 const ownerId = createUser(orgA, 'mkt.owner@lorler.test', 'owner');
 createUser(orgA, 'mkt.analyst@lorler.test', 'analyst');
-after(() => { stopServer(); fs.rmSync(FILA, { recursive: true, force: true }); });
+after(() => { stopServer(); fs.rmSync(FILA, { recursive: true, force: true }); fs.rmSync(VIDEOS, { recursive: true, force: true }); });
 const PHONE = '5519944445555';
 let n = 0;
 const msg = (text, extra = {}) => ({ id: `wamid.mkt.${++n}`, from: PHONE, text, ...extra });
@@ -206,6 +208,7 @@ test('WhatsApp: "Aprovar mwoym74071" (código e PIN colados), "APROVAR CÓDIGO P
   await handleInbound(msg(`APROVAR ${b.code} 4071`), { reply });
   assert.match(replies.at(-1), /✅ Aprovado/);
   const c = mk();
+  q.run('UPDATE whatsapp_links SET pin_ok_until = NULL'); // fora da janela de 30 min do PIN
   await handleInbound(msg(`APROVAR ${c.code}`), { reply });
   assert.match(replies.at(-1), /envie seu PIN/);
   await handleInbound(msg('APROVAR 4071 AGENDADO'), { reply });
@@ -213,4 +216,120 @@ test('WhatsApp: "Aprovar mwoym74071" (código e PIN colados), "APROVAR CÓDIGO P
   assert.equal(JSON.parse(fs.readFileSync(path.join(FILA, 'saida', `cerebro-${c.it.id}.json`), 'utf8')).quando, later);
   await handleInbound(msg('APROVAR 999999'), { reply });
   assert.match(replies.at(-1), /Não achei o código 999999/);
+});
+
+const writeResult = (id, est) => { fs.mkdirSync(path.join(FILA, 'resultados'), { recursive: true }); fs.writeFileSync(path.join(FILA, 'resultados', `cerebro-${id}.resultado.json`), JSON.stringify(est)); };
+
+test('PIN vale 30 min, APROVAR TUDO com um PIN só e aprovar de novo um post que falhou vira TENTAR DE NOVO', async () => {
+  const ctxA = { orgId: orgA, userId: ownerId, role: 'owner', productIds: null };
+  const replies = []; const reply = async (_to, t) => { replies.push(t); return 'ok'; };
+  const later = new Date(Date.now() + 2 * 86400000).toISOString();
+  const mk = (t = 'Tudo') => { const it = mkt.createItem(ctxA, { kind: 'post', title: t, networks: ['facebook'], text: 'Olá', media_url: 'https://cdn.jsdelivr.net/gh/x/y.jpg', media_kind: 'imagem', scheduled_at: later }, { source: 'teste' }); return { it, code: mkt.submit(ctxA, { item_id: it.id }).code }; };
+  q.run("UPDATE mkt_items SET status = 'cancelado' WHERE status = 'aguardando_aprovacao'");
+  q.run("UPDATE mkt_campaigns SET wa_code = NULL");
+  q.run('UPDATE whatsapp_links SET pin_ok_until = NULL');
+  const a = mk('Um'); const b = mk('Dois'); const c = mk('Três');
+  await handleInbound(msg('APROVAR TUDO'), { reply });
+  assert.match(replies.at(-1), /Vou aprovar 3 itens[\s\S]*Envie seu PIN/);
+  await handleInbound(msg('4071'), { reply });
+  assert.match(replies.at(-1), /✅ Aprovado\. 3 posts publicando agora[\s\S]*30 min/);
+  for (const x of [a, b, c]) assert.equal(mkt.getItem(ctxA, x.it.id).status, 'na_fila');
+  // dentro da janela: APROVAR código aprova sem pedir o PIN
+  const d = mk('Quatro');
+  await handleInbound(msg(`APROVAR ${d.code}`), { reply });
+  assert.match(replies.at(-1), /✅ Aprovado\. publicando agora/);
+  assert.doesNotMatch(replies.at(-1), /30 min/);
+  // falhou no Instagram por falta de ajuste: avisa uma vez com o passo a passo; depois "APROVAR código" = tentar de novo
+  q.run("UPDATE mkt_items SET networks = ? WHERE id = ?", JSON.stringify(['facebook', 'instagram']), d.it.id);
+  writeResult(d.it.id, { concluido: false, redes: { facebook: { situacao: 'publicado', url: 'https://fb.com/1' }, instagram: { situacao: 'aguardando_ajuste', erro: 'Instagram aguardando ajuste (permissão): o acesso da Página não tem instagram_content_publish.' } } });
+  const sent = []; const send = async (_to, t) => { sent.push(t); };
+  await processMarketing({ send });
+  assert.equal(sent.length, 1);
+  assert.match(sent[0], /esperando ajuste[\s\S]*✅ Facebook: https:\/\/fb\.com\/1[\s\S]*⏸️ Instagram[\s\S]*Como corrigir o Instagram[\s\S]*Casos de uso[\s\S]*instagram_content_publish/);
+  await processMarketing({ send });
+  assert.equal(sent.length, 1, 'aviso de ajuste só uma vez');
+  writeResult(d.it.id, { concluido: true, redes: { facebook: { situacao: 'publicado', url: 'https://fb.com/1' }, instagram: { situacao: 'desistido', erro: 'Instagram aguardando ajuste (vínculo): a Página LORLER não tem Instagram profissional vinculado.' } } });
+  await processMarketing({ send });
+  assert.equal(mkt.getItem(ctxA, d.it.id).status, 'parcial');
+  assert.match(sent.at(-1), /Publicado em parte[\s\S]*Editar perfil › \*Página\*[\s\S]*TENTAR DE NOVO/);
+  await handleInbound(msg(`APROVAR ${d.code}`), { reply });
+  assert.match(replies.at(-1), /🔁 Tentando de novo \*Quatro\* no Instagram/);
+  const post = JSON.parse(fs.readFileSync(path.join(FILA, 'saida', `cerebro-${d.it.id}.json`), 'utf8'));
+  assert.ok(post.tentar_de_novo && post.quando === post.tentar_de_novo);
+  // resultado antigo (antes de o publicador reabrir) é ignorado: nada de aviso repetido
+  const before = sent.length;
+  await processMarketing({ send });
+  assert.equal(sent.length, before);
+  assert.equal(mkt.getItem(ctxA, d.it.id).status, 'na_fila');
+  writeResult(d.it.id, { concluido: true, tentar_de_novo: post.tentar_de_novo, redes: { facebook: { situacao: 'publicado', url: 'https://fb.com/1' }, instagram: { situacao: 'publicado', url: 'https://instagram.com/p/9' } } });
+  await processMarketing({ send });
+  assert.equal(mkt.getItem(ctxA, d.it.id).status, 'publicado');
+  assert.match(sent.at(-1), /📣 Publicado[\s\S]*instagram\.com\/p\/9/);
+  assert.doesNotMatch(sent.at(-1), /TENTAR DE NOVO/);
+  // TENTAR DE NOVO sem nada falhando
+  await handleInbound(msg('tentar de novo'), { reply });
+  assert.match(replies.at(-1), /Não há post com erro/);
+});
+
+test('publicador desatualizado: TENTAR DE NOVO sem resposta em 20 min vira erro com a instrução do .bat', () => {
+  const ctxA = { orgId: orgA, userId: ownerId, role: 'owner', productIds: null };
+  const it = mkt.createItem(ctxA, { kind: 'post', title: 'Velho', networks: ['facebook'], text: 'Olá', media_url: 'https://cdn.jsdelivr.net/gh/x/y.jpg', media_kind: 'imagem', scheduled_at: new Date(Date.now() + 86400000).toISOString() }, { source: 'teste' });
+  mkt.submit(ctxA, { item_id: it.id }); mkt.approve(ctxA, { item_id: it.id, via: 'teste' });
+  writeResult(it.id, { concluido: true, redes: { facebook: { situacao: 'desistido', erro: 'HTTP 500' } } });
+  mkt.processResults();
+  assert.equal(mkt.getItem(ctxA, it.id).status, 'erro');
+  mkt.retry(ctxA, it.id);
+  const old = new Date(Date.now() - 25 * 60_000).toISOString();
+  q.run('UPDATE mkt_items SET result = ? WHERE id = ?', JSON.stringify({ ...mkt.getItem(ctxA, it.id).result, retry_at: old }), it.id);
+  const ch = mkt.processResults();
+  assert.ok(ch.some((x) => x.id === it.id));
+  assert.match(mkt.getItem(ctxA, it.id).result.erro, /LIGAR-PUBLICADOR-CEREBRO/);
+});
+
+test('biblioteca de vídeos: lista com legendas, rodízio, post de vídeo (Reels + YouTube), link público com Range e fila com o arquivo local', async () => {
+  const ctxA = { orgId: orgA, userId: ownerId, role: 'owner', productIds: null };
+  for (const f of ['torven-1-os.mp4', 'torven-3-laudos.mp4', 'rusten-1-comanda.mp4']) fs.writeFileSync(path.join(VIDEOS, f), Buffer.alloc(4000, f.length));
+  fs.writeFileSync(path.join(VIDEOS, '..evil.mp4.txt'), 'x');
+  fs.writeFileSync(path.join(VIDEOS, 'mensagens-whatsapp.txt'), '━━ TORVEN\n\n[torven-3-laudos.mp4]\n📋 Laudo para a seguradora em minutos!\n👉 lorler.com.br\n\n[torven-1-os.mp4]\n🔧 OS do pedido à entrega.\n');
+  const vids = mkt.listVideos(ctxA);
+  assert.equal(vids.length, 3);
+  const laudos = vids.find((v) => v.file === 'torven-3-laudos.mp4');
+  assert.equal(laudos.sistema, 'TORVEN'); assert.equal(laudos.titulo, 'TORVEN: Laudos');
+  assert.match(laudos.legenda, /^📋 Laudo para a seguradora em minutos!\n👉 lorler\.com\.br$/);
+  assert.equal(mkt.pickVideo(ctxA, { sistema: 'TORVEN', termo: 'video dos laudos' }).file, 'torven-3-laudos.mp4');
+  const it = mkt.createVideoPost(ctxA, laudos, { networks: ['instagram', 'facebook', 'youtube'] });
+  assert.deepEqual(it.networks, ['instagram', 'facebook', 'youtube']);
+  assert.equal(it.media_kind, 'video'); assert.equal(it.format, '9x16');
+  assert.deepEqual(it.issues, []);
+  assert.match(it.texts.youtube, /torven\.lorler\.com\.br/);
+  assert.equal(mkt.pickVideo(ctxA, { sistema: 'TORVEN' }).file, 'torven-1-os.mp4', 'rodízio: o menos usado');
+  // YouTube sem vídeo não passa
+  const img = mkt.createItem(ctxA, { kind: 'post', title: 'Sem vídeo', networks: ['youtube'], text: 'x', media_url: 'https://cdn.jsdelivr.net/gh/x/y.jpg', media_kind: 'imagem', scheduled_at: new Date(Date.now() + 86400000).toISOString() }, { source: 'teste' });
+  assert.ok(img.issues.some((x) => /YouTube: precisa de vídeo/.test(x)));
+  // aprovado → fila com o caminho local do vídeo (o publicador lê do disco)
+  mkt.submit(ctxA, { item_id: it.id }); mkt.approve(ctxA, { item_id: it.id, via: 'teste', publishNow: true });
+  const post = JSON.parse(fs.readFileSync(path.join(FILA, 'saida', `cerebro-${it.id}.json`), 'utf8'));
+  assert.equal(post.midia_arquivo, path.join(VIDEOS, 'torven-3-laudos.mp4'));
+  assert.match(post.video_url, /\/api\/public\/video\/torven-3-laudos\.mp4$/);
+  assert.deepEqual(post.redes, ['instagram', 'facebook', 'youtube']);
+  // link público com Range (o player e a Meta usam)
+  const b = await startServer();
+  const full = await fetch(`${b}/api/public/video/torven-3-laudos.mp4`);
+  assert.equal(full.status, 200); assert.equal(full.headers.get('content-type'), 'video/mp4'); assert.equal((await full.arrayBuffer()).byteLength, 4000);
+  const part = await fetch(`${b}/api/public/video/torven-3-laudos.mp4`, { headers: { range: 'bytes=100-199' } });
+  assert.equal(part.status, 206); assert.equal(part.headers.get('content-range'), 'bytes 100-199/4000'); assert.equal((await part.arrayBuffer()).byteLength, 100);
+  assert.equal((await fetch(`${b}/api/public/video/..%2Fx.mp4`)).status, 404);
+  assert.equal((await fetch(`${b}/api/public/video/mensagens-whatsapp.txt`)).status, 404);
+  // WhatsApp: VÍDEOS e "posta o vídeo do rusten"
+  const replies = []; const reply = async (_to, t) => { replies.push(t); return 'ok'; };
+  await handleInbound(msg('VÍDEOS'), { reply });
+  assert.match(replies.at(-1), /3 vídeos prontos[\s\S]*RUSTEN: Comanda[\s\S]*TORVEN: Os, Laudos \(1x\)/);
+  const owner = await import('../src/services/owner-actions.js');
+  assert.deepEqual(owner.quickIntent('posta o vídeo do rusten'), { nome: 'postar_video', args: { sistema: 'RUSTEN' } });
+  assert.deepEqual(owner.quickIntent('posta o video do torven laudos'), { nome: 'postar_video', args: { sistema: 'TORVEN', video: 'laudos' } });
+  assert.equal(owner.quickIntent('como corrigir o instagram')?.nome, 'corrigir_instagram');
+  assert.equal(owner.quickIntent('Como eu consigo corrigir')?.nome, 'corrigir_instagram');
+  assert.equal(owner.quickIntent('tenta de novo')?.nome, 'tentar_de_novo');
+  const r = await owner.perform({ ...ctxA, channel: 'whatsapp' }, 'postar_video', { sistema: 'RUSTEN' }, 'posta o vídeo do rusten');
+  assert.match(r.reply, /🎬 Post com o vídeo \*RUSTEN: Comanda\* pronto[\s\S]*APROVAR M[A-Z0-9]{5}/);
 });

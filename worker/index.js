@@ -16,12 +16,13 @@ import m006 from '../migrations/006_briefing.sql';
 import m007 from '../migrations/007_jarvis.sql';
 import m008 from '../migrations/008_marketing.sql';
 import m009 from '../migrations/009_mapa_empresa.sql';
+import m010 from '../migrations/010_publicacao_pratica.sql';
 import pricing from '../config/pricing.json';
 
 const MIGRATIONS = [
   { name: '001_init.sql', sql: m001 }, { name: '002_marketing_instagram.sql', sql: m002 },
   { name: '003_whatsapp.sql', sql: m003 }, { name: '004_conversation.sql', sql: m004 }, { name: '005_assistant.sql', sql: m005 },
-  { name: '006_briefing.sql', sql: m006 }, { name: '007_jarvis.sql', sql: m007 }, { name: '008_marketing.sql', sql: m008 }, { name: '009_mapa_empresa.sql', sql: m009 },
+  { name: '006_briefing.sql', sql: m006 }, { name: '007_jarvis.sql', sql: m007 }, { name: '008_marketing.sql', sql: m008 }, { name: '009_mapa_empresa.sql', sql: m009 }, { name: '010_publicacao_pratica.sql', sql: m010 },
 ];
 const HEARTBEAT_MS = 2 * 60_000;
 

@@ -46,9 +46,9 @@ export function parseBudget(f) {
   return Math.round(Number(v) * 100);
 }
 export function parseNetworks(f) {
-  if (/\b(todas|todos|tudo|as quatro|4 redes)\b/.test(f)) return mkt.NETWORKS;
+  if (/\b(todas|todos|tudo|as quatro|4 redes)\b/.test(f)) return mkt.PLAN_NETWORKS;
   const out = [];
-  if (/insta|ig\b/.test(f)) out.push('instagram'); if (/face|fb\b/.test(f)) out.push('facebook'); if (/tik ?tok/.test(f)) out.push('tiktok'); if (/linked ?in/.test(f)) out.push('linkedin');
+  if (/insta|ig\b/.test(f)) out.push('instagram'); if (/face|fb\b/.test(f)) out.push('facebook'); if (/tik ?tok/.test(f)) out.push('tiktok'); if (/linked ?in/.test(f)) out.push('linkedin'); if (/youtube|shorts/.test(f)) out.push('youtube');
   return out.length ? out : null;
 }
 export function parsePeriod(f) {
@@ -130,7 +130,7 @@ function fill(step, text) {
     case 'audience': return /^(padrao|pula|tanto faz|o de sempre)\b/.test(f) || skip ? '' : clampText(text.trim(), 200);
     case 'period': return parsePeriod(f) || (skip ? parsePeriod('2 semanas') : null);
     case 'budget_cents': { const b = parseBudget(f); return b != null ? b : skip ? 0 : null; }
-    case 'networks': return parseNetworks(f) || (skip ? mkt.NETWORKS : null);
+    case 'networks': return parseNetworks(f) || (skip ? mkt.PLAN_NETWORKS : null);
     case 'posts_per_week': return parsePerWeek(f) || (skip ? 3 : null);
     default: return null;
   }

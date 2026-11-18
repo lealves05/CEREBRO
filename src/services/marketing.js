@@ -15,13 +15,14 @@ import { errors, clampText, sha256, canonicalJson } from '../lib/util.js';
 import { audit } from './audit.js';
 import * as vault from './vault.js';
 
-export const NETWORKS = ['instagram', 'facebook', 'tiktok', 'linkedin'];
-export const NETWORK_LABEL = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', linkedin: 'LinkedIn' };
+export const NETWORKS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube'];
+export const PLAN_NETWORKS = ['instagram', 'facebook', 'tiktok', 'linkedin']; // padrão dos planos (YouTube só entra com vídeo)
+export const NETWORK_LABEL = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', linkedin: 'LinkedIn', youtube: 'YouTube' };
 export const KIND_LABEL = { post: 'Post', anuncio: 'Anúncio', acao: 'Ação comercial' };
 export const STATUS_LABEL = { rascunho: 'rascunho', aguardando_aprovacao: 'aguardando aprovação', aprovado: 'aprovado', na_fila: 'agendado (na fila)', publicado: 'publicado', parcial: 'publicado em parte', erro: 'com erro', cancelado: 'cancelado', concluido: 'concluído' };
-const LIMITS = { instagram: 2200, facebook: 60000, tiktok: 2200, linkedin: 3000 };
+const LIMITS = { instagram: 2200, facebook: 60000, tiktok: 2200, linkedin: 3000, youtube: 4900 };
 // melhores horários (Brasília) por rede — ponto de partida; você ajusta na reunião
-const BEST = { instagram: '18:30', facebook: '12:30', tiktok: '20:00', linkedin: '08:30' };
+const BEST = { instagram: '18:30', facebook: '12:30', tiktok: '20:00', linkedin: '08:30', youtube: '19:00' };
 const SYSTEM_SITES = { ORBI: 'orbi.lorler.com.br', TORVEN: 'torven.lorler.com.br', RUSTEN: 'rusten.lorler.com.br', APOLVEN: 'apolven.lorler.com.br', ANIBI: 'anibi.lorler.com.br', CIFREN: 'cifren.lorler.com.br' };
 const SYSTEM_PITCH = {
   ORBI: 'agenda, vendas e clientes de salões, barbearias e estética num lugar só',
@@ -85,6 +86,7 @@ export function issues(item) {
     if (n === 'instagram' && !item.media_url) out.push('Instagram: precisa de imagem ou vídeo.');
     if (n === 'instagram' && hashtagsOf(t) > 5) out.push('Instagram: no máximo 5 hashtags.');
     if (n === 'tiktok' && item.media_kind !== 'video') out.push('TikTok: precisa de vídeo.');
+    if (n === 'youtube' && item.media_kind !== 'video') out.push('YouTube: precisa de vídeo.');
   }
   if (item.media_url && !/^https:\/\//.test(item.media_url)) out.push('A mídia precisa de um link https público.');
   return out;
@@ -118,7 +120,7 @@ export function listCampaigns(ctx) {
 }
 
 // ---------------- escrita ----------------
-function cleanNets(v) { const a = Array.isArray(v) ? v : String(v || '').split(/[\s,]+/); return [...new Set(a.map((x) => fold(x).trim()).map((x) => (x === 'face' || x === 'fb' ? 'facebook' : x === 'insta' || x === 'ig' ? 'instagram' : x === 'tik tok' || x === 'tt' ? 'tiktok' : x === 'linked in' || x === 'li' ? 'linkedin' : x)).filter((x) => NETWORKS.includes(x)))]; }
+function cleanNets(v) { const a = Array.isArray(v) ? v : String(v || '').split(/[\s,]+/); return [...new Set(a.map((x) => fold(x).trim()).map((x) => (x === 'face' || x === 'fb' ? 'facebook' : x === 'insta' || x === 'ig' ? 'instagram' : x === 'tik tok' || x === 'tt' ? 'tiktok' : x === 'linked in' || x === 'li' ? 'linkedin' : x === 'yt' || x === 'shorts' ? 'youtube' : x)).filter((x) => NETWORKS.includes(x)))]; }
 function cleanDate(v) { if (!v) return null; const t = Date.parse(v); if (Number.isNaN(t)) throw errors.invalid('Data/hora inválida.'); return new Date(t).toISOString(); }
 function cleanUrl(v) { const s = String(v || '').trim(); if (!s) return ''; if (!/^https:\/\/[^\s]+$/i.test(s) || s.length > 1000) throw errors.invalid('Link de mídia inválido (use https).'); return s; }
 function mediaKind(url, given) { if (given === 'imagem' || given === 'video') return given; if (!url) return ''; return /\.(mp4|mov|m4v|webm)(\?|$)/i.test(url) ? 'video' : 'imagem'; }
@@ -208,7 +210,7 @@ export function planCampaign(ctx, b, { source = 'painel' } = {}) {
   let end = /^\d{4}-\d{2}-\d{2}$/.test(String(b.end_date || '')) ? b.end_date : addDays(start, 13);
   if (end < start) end = addDays(start, 13);
   const days = Math.min(62, Math.round((Date.parse(`${end}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) / 86400_000) + 1);
-  const nets = cleanNets(b.networks).length ? cleanNets(b.networks) : NETWORKS;
+  const nets = cleanNets(b.networks).length ? cleanNets(b.networks) : PLAN_NETWORKS;
   const perWeek = Math.min(7, Math.max(1, parseInt(b.posts_per_week, 10) || 3));
   const budget = Math.max(0, Math.min(100_000_00, parseInt(b.budget_cents, 10) || 0));
   const objective = ['vendas', 'leads', 'reconhecimento', 'engajamento', 'reativacao'].includes(b.objective) ? b.objective : 'vendas';
@@ -333,12 +335,15 @@ function createTasks(ctx, it) {
 }
 
 /** Escreve o post no formato do publicador da LORLER (saida/cerebro-<id>.json). */
-export function enqueue(it) {
+export function enqueue(it, { retryAt = null } = {}) {
+  const local = videoFileFromUrl(it.media_url);
   const post = {
-    id: `cerebro-${it.id}`, quando: it.scheduled_at, redes: it.networks, texto: it.text || textFor(it, it.networks[0]),
+    id: `cerebro-${it.id}`, quando: retryAt || it.scheduled_at, redes: it.networks, texto: it.text || textFor(it, it.networks[0]),
     textos: Object.fromEntries(it.networks.map((n) => [n, textFor(it, n)])), titulo: clampText(it.title, 90),
     ...(it.media_url ? { [it.media_kind === 'video' ? 'video_url' : 'imagem_url']: it.media_url } : {}),
+    ...(local ? { midia_arquivo: local } : {}), ...(retryAt ? { tentar_de_novo: retryAt } : {}),
     ...(it.format ? { formato: it.format } : {}), ...(it.link ? { link: it.link } : {}),
+    youtube: { privacidade: 'public', tags: ['LORLER', ...(/^(ORBI|TORVEN|RUSTEN|APOLVEN|ANIBI|CIFREN)\b/.exec(it.title || '') || []).slice(0, 1)] },
     tiktok: { modo: 'rascunho' }, origem: 'cerebro',
   };
   fs.writeFileSync(path.join(qdir('saida'), `cerebro-${it.id}.json`), JSON.stringify(post, null, 2));
@@ -367,6 +372,16 @@ export function processResults() {
     const it = q.get('SELECT * FROM mkt_items WHERE id = ?', id); if (!it) continue;
     let est; try { est = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { continue; }
     const redes = est.redes || {}; const nets = json(it.networks, []);
+    const prev = json(it.result, {});
+    // pediu TENTAR DE NOVO: ignora o resultado antigo até o publicador reabrir o post
+    if (prev.retry_at && est.tentar_de_novo !== prev.retry_at) {
+      if (Date.now() - Date.parse(prev.retry_at) > 20 * 60_000 && !prev.retry_stale) {
+        const r2 = { ...prev, retry_stale: true, erro: 'O publicador da VPS não reabriu o post: ele precisa ser atualizado (rode o LIGAR-PUBLICADOR-CEREBRO.bat no PC).' };
+        q.run("UPDATE mkt_items SET status = 'erro', result = ?, updated_at = ? WHERE id = ?", JSON.stringify(r2), now(), id);
+        changed.push({ ...shapeItem(q.get('SELECT * FROM mkt_items WHERE id = ?', id)), ok: [], bad: nets });
+      }
+      continue;
+    }
     const ok = nets.filter((n) => redes[n]?.situacao === 'publicado');
     const bad = nets.filter((n) => redes[n]?.situacao === 'desistido' || (est.concluido && redes[n]?.situacao !== 'publicado'));
     let status = it.status;
@@ -375,12 +390,104 @@ export function processResults() {
     else if (est.concluido && ok.length) status = 'parcial';
     else if (est.concluido) status = 'erro';
     const result = { redes: Object.fromEntries(nets.map((n) => [n, { situacao: redes[n]?.situacao || 'pendente', url: redes[n]?.url || null, erro: redes[n]?.erro || null }])), erro: est.erro || est.erro_midia || null, atualizado_em: est.atualizado_em || now() };
-    if (status !== it.status || JSON.stringify(result.redes) !== JSON.stringify(json(it.result, {}).redes || {})) {
+    // rede esperando um ajuste na conta (ex.: Instagram sem permissão): avisa uma vez com o passo a passo
+    const ajuste = nets.filter((n) => redes[n]?.situacao === 'aguardando_ajuste');
+    if (prev.aviso_ajuste && ajuste.length) result.aviso_ajuste = prev.aviso_ajuste;
+    const avisarAjuste = ajuste.length && !prev.aviso_ajuste && !est.concluido;
+    if (avisarAjuste) result.aviso_ajuste = now();
+    if (status !== it.status || avisarAjuste || JSON.stringify(result.redes) !== JSON.stringify(prev.redes || {})) {
       q.run('UPDATE mkt_items SET status = ?, result = ?, updated_at = ? WHERE id = ?', status, JSON.stringify(result), now(), id);
       if (['publicado', 'parcial', 'erro'].includes(status) && !it.notified_at) changed.push({ ...shapeItem(q.get('SELECT * FROM mkt_items WHERE id = ?', id)), ok, bad });
+      else if (avisarAjuste) changed.push({ ...shapeItem(q.get('SELECT * FROM mkt_items WHERE id = ?', id)), ok, bad, ajuste, aviso: true });
     }
   }
   return changed;
+}
+
+/** "TENTAR DE NOVO": devolve à fila só as redes que não saíram (o conteúdo já foi aprovado; não pede PIN de novo). */
+export function retry(ctx, id) {
+  const it = getItem(ctx, id);
+  if (it.kind !== 'post') throw errors.conflict('Só posts podem ser tentados de novo.');
+  const falhou = it.networks.filter((n) => it.result?.redes?.[n]?.situacao !== 'publicado');
+  if (!['erro', 'parcial', 'na_fila'].includes(it.status) || !falhou.length) throw errors.conflict(`Este post está ${it.status_label}; não há nada para tentar de novo.`);
+  if (!it.approved_at) throw errors.conflict('Este post ainda não foi aprovado.');
+  const at = new Date().toISOString();
+  enqueue(it, { retryAt: at });
+  const prev = it.result || {};
+  q.run('UPDATE mkt_items SET result = ?, notified_at = NULL, updated_at = ? WHERE id = ?', JSON.stringify({ ...prev, retry_at: at, retry_stale: false, aviso_ajuste: null, erro: null }), now(), it.id);
+  audit({ orgId: ctx.orgId, actorType: 'user', actorId: ctx.userId, event: 'marketing.retry', objectType: 'mkt_item', objectId: it.id, metadata: { networks: falhou } });
+  return { item: getItem(ctx, it.id), networks: falhou };
+}
+/** Último post que falhou (ou saiu em parte) para o "TENTAR DE NOVO" sem código. */
+export function lastFailed(ctx) {
+  const r = q.get("SELECT id FROM mkt_items WHERE organization_id = ? AND kind = 'post' AND approved_at IS NOT NULL AND (status IN ('erro','parcial') OR (status = 'na_fila' AND result LIKE '%aguardando_ajuste%')) ORDER BY updated_at DESC LIMIT 1", ctx.orgId);
+  return r ? getItem(ctx, r.id) : null;
+}
+
+// ---------------- biblioteca de vídeos prontos (enviados do PC pelo ENVIAR-VIDEOS-CEREBRO.bat) ----------------
+export function videosDir() {
+  if (process.env.LORLER_VIDEOS) return process.env.LORLER_VIDEOS;
+  return path.join(path.dirname(queueDir()), 'videos');
+}
+const SYSTEMS = ['ORBI', 'TORVEN', 'RUSTEN', 'APOLVEN', 'ANIBI', 'CIFREN'];
+const VIDEO_RE = /^[a-z0-9][a-z0-9._-]{0,80}\.mp4$/i;
+const videoBase = () => `${(config.publicUrl || 'https://cerebro.lorler.com.br').replace(/\/+$/, '')}/api/public/video/`;
+export function videoUrl(file) { return videoBase() + encodeURIComponent(file); }
+export function videoFileFromUrl(url) {
+  const u = String(url || '');
+  if (!u.startsWith(videoBase())) return null;
+  const f = decodeURIComponent(u.slice(videoBase().length));
+  return VIDEO_RE.test(f) ? path.join(videosDir(), f) : null;
+}
+/** Legendas prontas do mensagens-whatsapp.txt ([arquivo.mp4] seguido do texto). */
+function videoCaptions() {
+  const out = {};
+  try {
+    const txt = fs.readFileSync(path.join(videosDir(), 'mensagens-whatsapp.txt'), 'utf8');
+    for (const m of txt.matchAll(/\[([^\]\n]+\.mp4)\]\s*\n([\s\S]*?)(?=\n\s*\[[^\]\n]+\.mp4\]|\n━|$)/g)) out[m[1].trim().toLowerCase()] = m[2].trim();
+  } catch { /* sem legendas */ }
+  return out;
+}
+export function listVideos(ctx) {
+  let files = [];
+  try { files = fs.readdirSync(videosDir()).filter((f) => VIDEO_RE.test(f)).sort(); } catch { return []; }
+  const caps = videoCaptions();
+  const uses = Object.fromEntries((ctx ? q.all('SELECT file, COUNT(*) AS n, MAX(created_at) AS last FROM mkt_video_uses WHERE organization_id = ? GROUP BY file', ctx.orgId) : []).map((r) => [r.file, r]));
+  return files.map((f) => {
+    const st = fs.statSync(path.join(videosDir(), f));
+    const sistema = SYSTEMS.find((s) => f.toUpperCase().startsWith(s)) || 'LORLER';
+    const nome = f.replace(/\.mp4$/i, '').replace(/^[a-z]+-\d+-/i, '').replace(/[-_]+/g, ' ');
+    return { file: f, sistema, titulo: `${sistema}: ${nome.charAt(0).toUpperCase()}${nome.slice(1)}`, legenda: caps[f.toLowerCase()] || '', bytes: st.size, url: videoUrl(f), usos: uses[f]?.n || 0, ultimo_uso: uses[f]?.last || null };
+  });
+}
+/** Escolhe um vídeo: pelo nome/sistema pedido ou o menos usado (rodízio). */
+export function pickVideo(ctx, { sistema = '', termo = '' } = {}) {
+  const all = listVideos(ctx);
+  if (!all.length) return null;
+  const t = fold(termo).replace(/\b(o|a|do|da|de|video|videos|sobre)\b/g, ' ').trim();
+  let list = sistema ? all.filter((v) => v.sistema === String(sistema).toUpperCase()) : all;
+  if (t) { const hit = list.filter((v) => t.split(/\s+/).some((w) => w.length > 2 && fold(v.file).includes(w))); if (hit.length) list = hit; }
+  if (!list.length) list = all;
+  return [...list].sort((a, b) => a.usos - b.usos || String(a.ultimo_uso || '').localeCompare(String(b.ultimo_uso || '')) || a.file.localeCompare(b.file))[0];
+}
+/** Cria o post com um vídeo da biblioteca (Reels, Facebook, YouTube Shorts e o que mais estiver conectado). */
+export function createVideoPost(ctx, video, { networks = null, scheduled_at = null, source = 'conversa' } = {}) {
+  const nets = (networks && cleanNets(networks).length ? cleanNets(networks) : ['instagram', 'facebook', 'youtube']);
+  const product = SYSTEMS.includes(video.sistema) ? video.sistema : null;
+  const dr = draftTexts({ product, topic: video.titulo.replace(/^\w+:\s*/, '') });
+  const base = video.legenda || dr.texts.instagram;
+  const tags = product ? `\n\n#${product.toLowerCase()} #lorler #gestao` : '\n\n#lorler #gestao';
+  const texts = { instagram: clampText(`${base}${tags}`, 2200), facebook: base, youtube: `${base}\n\n${product ? `https://${SYSTEM_SITES[product]}` : 'https://lorler.com.br'}`, tiktok: clampText(base, 2200), linkedin: base };
+  const when = scheduled_at || new Date(Date.now() + 10 * 60_000).toISOString();
+  const it = createItem(ctx, { kind: 'post', title: video.titulo.slice(0, 120), networks: nets, text: base, texts: Object.fromEntries(nets.map((n) => [n, texts[n]])), media_url: video.url, media_kind: 'video', format: '9x16', scheduled_at: when, link: product ? `https://${SYSTEM_SITES[product]}` : 'https://lorler.com.br' }, { source });
+  insert('mkt_video_uses', { organization_id: ctx.orgId, file: video.file, item_id: it.id, created_at: now() });
+  return it;
+}
+export function readVideo(file) {
+  const f = String(file || '');
+  if (!VIDEO_RE.test(f)) return null;
+  const p = path.join(videosDir(), f);
+  try { const st = fs.statSync(p); return st.isFile() ? { path: p, bytes: st.size } : null; } catch { return null; }
 }
 
 // ---------------- mídia enviada (foto/vídeo do WhatsApp ou do painel), servida em link público para as redes ----------------
