@@ -23,6 +23,8 @@ export const CATALOG = [
   { nome: 'redes_status', descricao: 'confere a conexão com as redes sociais e se o publicador da VPS está pronto para publicar' },
   { nome: 'criar_post', descricao: 'cria um post (texto e mídia da biblioteca) e deixa pronto para aprovar', args: 'tema, redes[instagram|facebook|tiktok|linkedin], quando (ex.: "amanhã 18h"), sistema (ORBI, TORVEN...)' },
   { nome: 'gerar_imagem', descricao: 'gera uma imagem/arte promocional (feed 1080x1350) com título e chamada; pode usar como fundo a foto que ele acabou de mandar. Manda a imagem e deixa um post pronto com ela', args: 'sistema, tema, titulo (texto principal), apoio (frase menor), cta, usar_ultima_foto (true se ele mandou uma foto e quer a arte em cima dela), redes[]' },
+  { nome: 'mapa_empresa', descricao: 'mostra o mapa da empresa: departamentos com números do dia, rotinas automáticas e o que espera aprovação' },
+  { nome: 'rodar_rotina', descricao: 'roda agora uma rotina automática do mapa', args: 'rotina (contatos | caixa | post | sites | risco)' },
   { nome: 'agenda_posts', descricao: 'lista os posts e ações agendados e o que espera aprovação' },
   { nome: 'reuniao_marketing', descricao: 'começa a reunião de marketing (plano de posts, anúncio e ações comerciais)' },
   { nome: 'empresas', descricao: 'lista empresas clientes da Área Master', args: 'filtro (teste|inadimplentes|vencendo|ativas|bloqueadas), sistema, termo' },
@@ -65,6 +67,8 @@ export function quickIntent(text) {
     const sis = (f.match(/\b(orbi|torven|rusten|apolven|anibi|cifren)\b/) || [])[1];
     return { nome: 'gerar_imagem', args: sis ? { sistema: sis.toUpperCase() } : {} };
   }
+  if (/\b(mapa da empresa|quadro da empresa|mapa do cerebro|como esta a empresa|visao geral da empresa)\b/.test(f)) return { nome: 'mapa_empresa', args: {} };
+  { const m = /\b(rod|confer|verific|fa[zc])\w*\b.*\b(caixa do dia|contatos novos|post do dia|sites( no ar)?|clientes em risco)\b/.exec(f); if (m) return { nome: 'rodar_rotina', args: { rotina: { 'caixa do dia': 'caixa', 'contatos novos': 'contatos', 'post do dia': 'post', 'clientes em risco': 'risco' }[m[2]] || 'sites' } }; }
   const pergunta = /^(qual|quais|quando|como|onde|por ?que|o que|quanto)\b/.test(f);
   if (!pergunta && (/\b(ger|cri|faz|mont|escrev|prepar|agend|program|post|public)\w*\b.*\b(post|publicacao|story|stories|reels?|carrossel)\b/.test(f) || /\b(posta|postar|publica|publicar)\b.*\b(instagram|facebook|tiktok|linkedin|redes)\b/.test(f))) return { nome: 'criar_post', args: {} };
   if (/\b(o que (esta|ta) agendado|posts agendados|agenda (de|dos) posts|proximos posts|o que vai sair)\b/.test(f)) return { nome: 'agenda_posts', args: {} };
@@ -134,6 +138,14 @@ async function run(ctx, nome, a = {}, text = '') {
       let sent = false;
       if (ctx.channel === 'whatsapp' && link?.wa_id) { try { await wa.sendImage(link.wa_id, img.buffer, img.mime, `Arte do ${sistema}${img.how === 'biblioteca' ? ' (da biblioteca)' : ''}`, saved.url); sent = true; } catch { /* manda o link abaixo */ } }
       return `${sent ? 'Mandei a arte aqui em cima. ' : `Arte pronta: ${saved.url} `}Deixei o post com ela para ${mkt.fmtWhen(when)} no ${nets.map((n) => mkt.NETWORK_LABEL[n]).join(' e ')}. Para publicar, responda *APROVAR ${sub.code}* e o PIN. Quer outra versão? Diga, por exemplo, "faz outra com o título …".`;
+    }
+    case 'mapa_empresa': return (await import('./company-map.js')).mapSummary(ctx);
+    case 'rodar_rotina': {
+      const cm = await import('./company-map.js');
+      const job = String(a.rotina || '').toLowerCase();
+      if (!cm.JOBS[job]) throw new Error('Rotinas: contatos, caixa, post, sites e risco.');
+      const r = await cm.runJob({ ...ctx, channel: ctx.channel || 'whatsapp' }, job, { manual: true, notify: false });
+      return r.text || 'Feito, nada novo.';
     }
     case 'agenda_posts': return (await skillRunners.marketing(ctx, 'o que está agendado')).reply;
     case 'reuniao_marketing': return (await meeting.handle(ctx, 'reunião de marketing', ctx.channel || 'whatsapp'))?.reply || 'Vamos lá: qual é o objetivo da campanha?';

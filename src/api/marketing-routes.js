@@ -3,11 +3,17 @@ import { requirePerm } from '../auth/authz.js';
 import { requireRecentAuth } from '../auth/auth.js';
 import { errors, clampText } from '../lib/util.js';
 import * as mkt from '../services/marketing.js';
+import * as companyMap from '../services/company-map.js';
 import * as meeting from '../services/meeting.js';
 import { notifySubmission } from '../services/whatsapp-approvals.js';
 import * as support from '../services/support-agent.js';
 
 export function registerMarketingRoutes(router) {
+  // Mapa da empresa (departamentos, rotinas autônomas, para aprovar, atividade)
+  router.get('/api/mapa', async ({ ctx }) => { requirePerm(ctx, 'view'); return companyMap.companyMap(ctx); });
+  router.put('/api/mapa/rotinas/:job', ({ ctx, params, body }) => { requirePerm(ctx, 'manage_integrations'); return companyMap.setJob(ctx, params.job, { enabled: body?.enabled, time: body?.time }); });
+  router.post('/api/mapa/rotinas/:job/rodar', async ({ ctx, params }) => { requirePerm(ctx, 'manage_integrations'); const r = await companyMap.runJob(ctx, params.job, { manual: true }); return { ok: !r.error, text: r.text || 'Feito (nada novo).' }; });
+
   router.get('/api/mkt/overview', ({ ctx, url }) => {
     requirePerm(ctx, 'view');
     const from = url.searchParams.get('from') || new Date(Date.now() - 7 * 86400_000).toISOString();

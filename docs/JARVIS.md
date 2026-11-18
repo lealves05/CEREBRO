@@ -70,3 +70,13 @@ resposta (texto **ou áudio**) vai direto para o cofre.
 - Nada disso aprova ou executa ação: aprovação continua na tela (senha) ou no WhatsApp (PIN).
 - Whisper e Kokoro só escutam em `127.0.0.1`. O token do cofre só lê/grava o cofre da própria pessoa e pode ser
   revogado. Caminhos de nota são validados (sem `../`).
+
+## Mapa da empresa (#/mapa)
+
+O Cérebro como equipe de agentes em 8 departamentos (CRM, Tarefas, Financeiro, Segurança, Traqueamento, Educação,
+Marketing, Cofre), com números ao vivo da Área Master e do próprio Cérebro, "segundo cérebro" (conversas, reuniões,
+notas, decisões, pendências), linha de frente (Atendente, Vendedor, Assistente pessoal), o que espera aprovação e a
+atividade dos agentes. Rotinas autônomas (liga/desliga e "rodar agora" no mapa; avisam no WhatsApp do dono):
+contatos novos 06:00 · caixa do dia 09:00 · post do dia 12:00 (dias úteis, com arte e código para aprovar) ·
+sites no ar de hora em hora (avisa quando cai e quando volta) · clientes em risco segunda 10:30.
+No WhatsApp: "mapa da empresa", "confere o caixa do dia", "roda o post do dia".

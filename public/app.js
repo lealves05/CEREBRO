@@ -4,6 +4,7 @@ import { speechText, sentences, FILLERS } from './speech.js?v=20261114a';
 import { sparkline, ring, animateRings, radar, statusBar, flowChart, countUp, sysColor, projectionChart } from './hud.js?v=20261007a';
 import { viewJarvis, createPtt, bindSpacebar } from './jarvis.js?v=20261114c';
 import { viewMarketing } from './marketing.js?v=20261114a';
+import { viewMapa } from './mapa.js?v=20261117a';
 // LORLER · Central de Decisões — painel HUD (SPA sem dependências)
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -414,7 +415,7 @@ function renderSetup() {
 
 // ---------------- Shell ----------------
 const NAV = [
-  ['g', 'JARVIS'], ['jarvis', 'HUD JARVIS', 'brainmark'], ['marketing', 'Marketing e redes', 'insta'],
+  ['g', 'JARVIS'], ['jarvis', 'HUD JARVIS', 'brainmark'], ['mapa', 'Mapa da empresa', 'radar'], ['marketing', 'Marketing e redes', 'insta'],
   ['g', 'Decidir'], ['nucleo', 'Comando', 'command'], ['decisoes', 'Sala de Decisão', 'scale'], ['aprovacoes', 'Aprovações', 'shield'], ['radar', 'Radar dos sistemas', 'radar'], ['whatsapp', 'WhatsApp', 'whatsapp'],
   ['g', 'Cérebro'], ['nova', 'Nova análise', 'plus'], ['agentes', 'Agentes', 'agents'], ['conhecimento', 'Conhecimento', 'book'], ['assistente', 'Assistente', 'face'],
   ['g', 'Configuração'], ['integracoes', 'Integrações', 'plug'], ['regras', 'Regras e limites', 'rules'], ['auditoria', 'Histórico e auditoria', 'audit'], ['admin', 'Administração', 'admin'],
@@ -481,7 +482,7 @@ function route() {
   state.query = new URLSearchParams(hashQuery);
   const [, key = 'jarvis', arg] = hashPath.split('/');
   $$('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.k === key || (key === 'decisao' && a.dataset.k === 'decisoes')));
-  const views = { jarvis: async (cc) => { const off = await viewJarvis(cc, jarvisDeps()); state.cleanup.push(off); }, marketing: (cc) => viewMarketing(cc, jarvisDeps()), nucleo: viewCore, radar: viewRadar, whatsapp: viewWhatsApp, nova: viewNew, decisoes: viewDecisions, decisao: viewDecision, aprovacoes: viewApprovals, agentes: viewAgents, conhecimento: viewKnowledge, integracoes: viewIntegrations, regras: viewRules, auditoria: viewAudit, assistente: viewAssistant, admin: viewAdmin };
+  const views = { jarvis: async (cc) => { const off = await viewJarvis(cc, jarvisDeps()); state.cleanup.push(off); }, marketing: (cc) => viewMarketing(cc, jarvisDeps()), mapa: (cc) => viewMapa(cc, jarvisDeps()), nucleo: viewCore, radar: viewRadar, whatsapp: viewWhatsApp, nova: viewNew, decisoes: viewDecisions, decisao: viewDecision, aprovacoes: viewApprovals, agentes: viewAgents, conhecimento: viewKnowledge, integracoes: viewIntegrations, regras: viewRules, auditoria: viewAudit, assistente: viewAssistant, admin: viewAdmin };
   const titles = { decisao: 'Sala de Decisão' };
   $('#vtitle').textContent = titles[key] || NAV.find((n) => n[0] === key)?.[1] || '';
   const c = $('#content');

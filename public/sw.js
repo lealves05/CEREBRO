@@ -1,7 +1,7 @@
 // Service worker do Cérebro (app instalável no celular). Guarda só a "casca" do painel para abrir rápido;
 // dados (/api) nunca ficam em cache — sempre vêm do servidor.
-const CACHE = 'cerebro-casca-20261114e';
-const CASCA = ['/', '/index.html', '/style.css', '/app.js', '/jarvis.js', '/marketing.js', '/neural.js', '/avatar.js', '/speech.js', '/hud.js', '/favicon.svg', '/icon-192.png', '/manifest.webmanifest'];
+const CACHE = 'cerebro-casca-20261117a';
+const CASCA = ['/', '/index.html', '/style.css', '/app.js', '/jarvis.js', '/marketing.js', '/mapa.js', '/neural.js', '/avatar.js', '/speech.js', '/hud.js', '/favicon.svg', '/icon-192.png', '/manifest.webmanifest'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CASCA)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
